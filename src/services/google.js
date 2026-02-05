@@ -62,10 +62,20 @@ async function createEvent(eventData) {
         summary: eventData.summary,
         description: eventData.description,
         location: eventData.location,
-        start: { dateTime: eventData.start, timeZone: 'America/Sao_Paulo' },
-        end: { dateTime: eventData.end, timeZone: 'America/Sao_Paulo' },
         reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] },
     };
+
+    if (eventData.start && eventData.start.includes('T')) {
+        resource.start = { dateTime: eventData.start, timeZone: 'America/Sao_Paulo' };
+    } else {
+        resource.start = { date: eventData.start };
+    }
+
+    if (eventData.end && eventData.end.includes('T')) {
+        resource.end = { dateTime: eventData.end, timeZone: 'America/Sao_Paulo' };
+    } else {
+        resource.end = { date: eventData.end };
+    }
 
     if (eventData.attendees && Array.isArray(eventData.attendees)) {
         resource.attendees = eventData.attendees.map(email => ({ email }));
@@ -117,8 +127,16 @@ async function updateEvent(eventId, updates) {
     if (updates.summary) resource.summary = updates.summary;
     if (updates.description) resource.description = updates.description;
     if (updates.location) resource.location = updates.location;
-    if (updates.start) resource.start = { dateTime: updates.start, timeZone: 'America/Sao_Paulo' };
-    if (updates.end) resource.end = { dateTime: updates.end, timeZone: 'America/Sao_Paulo' };
+    if (updates.start) {
+        resource.start = updates.start.includes('T')
+            ? { dateTime: updates.start, timeZone: 'America/Sao_Paulo' }
+            : { date: updates.start };
+    }
+    if (updates.end) {
+        resource.end = updates.end.includes('T')
+            ? { dateTime: updates.end, timeZone: 'America/Sao_Paulo' }
+            : { date: updates.end };
+    }
     if (updates.colorId) resource.colorId = updates.colorId;
 
     const response = await calendar.events.patch({
