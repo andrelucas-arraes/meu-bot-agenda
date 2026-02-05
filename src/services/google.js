@@ -5,7 +5,8 @@ const { DateTime } = require('luxon');
 
 const SCOPES = [
     'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/tasks'
+    'https://www.googleapis.com/auth/tasks',
+    'https://www.googleapis.com/auth/drive'
 ];
 
 const TOKEN_PATH = path.join(__dirname, '../../tokens.json');
