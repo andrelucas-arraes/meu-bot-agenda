@@ -122,7 +122,11 @@ bot.on('text', async (ctx) => {
                 if (group.tasks.length === 0) {
                     msg += `   _(vazia)_\n`;
                 } else {
-                    group.tasks.forEach(t => msg += `   ▫️ ${t.title}\n`);
+                    group.tasks.forEach(t => {
+                        msg += `   ▫️ ${t.title}`;
+                        if (t.notes) msg += `\n      📝 _${t.notes}_`;
+                        msg += `\n`;
+                    });
                 }
                 msg += '\n';
             });
@@ -163,7 +167,11 @@ bot.on('text', async (ctx) => {
                 if (group.cards.length === 0) {
                     msg += `   _(vazia)_\n`;
                 } else {
-                    group.cards.forEach(c => msg += `   📌 [${c.name}](${c.shortUrl})\n`);
+                    group.cards.forEach(c => {
+                        msg += `   📌 [${c.name}](${c.shortUrl})`;
+                        if (c.desc) msg += ` - _${c.desc}_`;
+                        msg += `\n`;
+                    });
                 }
                 msg += '\n';
             });

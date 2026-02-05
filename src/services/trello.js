@@ -77,7 +77,7 @@ async function createCard({ name, desc, due, labels, members }) {
 async function listCards(listId = TRELLO_LIST_INBOX) {
     if (!listId) throw new Error('List ID required');
 
-    const url = `${BASE_URL}/lists/${listId}/cards?fields=name,shortUrl,due,idList,labels&${getAuthParams()}`;
+    const url = `${BASE_URL}/lists/${listId}/cards?fields=name,shortUrl,due,idList,labels,desc&${getAuthParams()}`;
 
     const response = await fetch(url);
     if (!response.ok) throw new Error(await response.text());
