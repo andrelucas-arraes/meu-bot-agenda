@@ -140,7 +140,7 @@ async function deleteEvent(eventId) {
 
 // --- TASKS ---
 
-async function createTask(taskData) {
+async function createTask(taskData, taskListId = '@default') {
     const auth = await getAuthClient();
     const tasks = google.tasks({ version: 'v1', auth });
 
@@ -153,7 +153,7 @@ async function createTask(taskData) {
     }
 
     const response = await tasks.tasks.insert({
-        tasklist: '@default',
+        tasklist: taskListId,
         resource: resource,
     });
     return response.data;
@@ -163,18 +163,42 @@ async function listTasks(timeMin, timeMax, showCompleted = false) {
     const auth = await getAuthClient();
     const service = google.tasks({ version: 'v1', auth });
 
-    const params = {
-        tasklist: '@default',
-        showCompleted: showCompleted,
-    };
-    if (timeMin) params.dueMin = timeMin;
-    if (timeMax) params.dueMax = timeMax;
+    try {
+        // 1. Get all task lists
+        const listsResponse = await service.tasklists.list();
+        const taskLists = listsResponse.data.items || [];
 
-    const response = await service.tasks.list(params);
-    return response.data.items || [];
+        let allTasks = [];
+
+        // 2. Iterate and fetch tasks
+        for (const list of taskLists) {
+            const params = {
+                tasklist: list.id,
+                showCompleted: showCompleted,
+            };
+            if (timeMin) params.dueMin = timeMin;
+            if (timeMax) params.dueMax = timeMax;
+
+            const res = await service.tasks.list(params);
+            const items = res.data.items || [];
+
+            // 3. Enrich task with list info
+            items.forEach(t => {
+                t.taskListId = list.id;
+                t.taskListName = list.title;
+            });
+
+            allTasks = allTasks.concat(items);
+        }
+        return allTasks;
+
+    } catch (error) {
+        console.error('Error listing tasks:', error);
+        return [];
+    }
 }
 
-async function updateTask(taskId, updates) {
+async function updateTask(taskId, updates, taskListId = '@default') {
     const auth = await getAuthClient();
     const service = google.tasks({ version: 'v1', auth });
 
@@ -185,23 +209,23 @@ async function updateTask(taskId, updates) {
     if (updates.status) resource.status = updates.status;
 
     const response = await service.tasks.patch({
-        tasklist: '@default',
+        tasklist: taskListId,
         task: taskId,
         resource: resource
     });
     return response.data;
 }
 
-async function completeTask(taskId) {
-    return updateTask(taskId, { status: 'completed' });
+async function completeTask(taskId, taskListId = '@default') {
+    return updateTask(taskId, { status: 'completed' }, taskListId);
 }
 
-async function deleteTask(taskId) {
+async function deleteTask(taskId, taskListId = '@default') {
     const auth = await getAuthClient();
     const service = google.tasks({ version: 'v1', auth });
 
     await service.tasks.delete({
-        tasklist: '@default',
+        tasklist: taskListId,
         task: taskId
     });
 }

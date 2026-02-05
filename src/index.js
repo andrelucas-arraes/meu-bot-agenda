@@ -116,25 +116,25 @@ bot.on('text', async (ctx) => {
             const tasks = await googleService.listTasks();
             if (tasks.length === 0) return ctx.reply('✅ Tudo feito!');
             let msg = '*Tarefas:*\n';
-            tasks.forEach(t => msg += `▫️ ${t.title}\n`);
+            tasks.forEach(t => msg += `▫️ [${t.taskListName}] ${t.title}\n`);
             await ctx.reply(msg, { parse_mode: 'Markdown' });
 
         } else if (intent.tipo === 'update_task') {
             const task = await findTaskByQuery(intent.query);
             if (!task) return ctx.reply('⚠️ Tarefa não encontrada.');
-            await googleService.updateTask(task.id, intent);
+            await googleService.updateTask(task.id, intent, task.taskListId);
             await ctx.reply(`✅ Tarefa "${task.title}" atualizada.`);
 
         } else if (intent.tipo === 'complete_task') {
             const task = await findTaskByQuery(intent.query);
             if (!task) return ctx.reply('⚠️ Tarefa não encontrada.');
-            await googleService.completeTask(task.id);
+            await googleService.completeTask(task.id, task.taskListId);
             await ctx.reply(`✅ Tarefa "${task.title}" concluída!`);
 
         } else if (intent.tipo === 'delete_task') {
             const task = await findTaskByQuery(intent.query);
             if (!task) return ctx.reply('⚠️ Tarefa não encontrada.');
-            await googleService.deleteTask(task.id);
+            await googleService.deleteTask(task.id, task.taskListId);
             await ctx.reply(`🗑️ Tarefa "${task.title}" apagada.`);
 
 
