@@ -40,6 +40,12 @@ LIMITES:
    - CRIAR evento no passado → Erro (perguntar se quis dizer amanhã).
    - LISTAR/DELETAR no passado → Permitir.
 
+6. **DATAS ESPECÍFICAS (CRÍTICO!)**
+   - Se o usuário menciona "amanhã", "sexta", "dia 15", etc. → SEMPRE inclua `target_date`!
+   - "o que tenho amanhã?" → target_date = {{TOMORROW}}
+   - "agenda de sexta" → target_date = próxima sexta
+   - Sem target_date = HOJE. Só omita se for realmente "hoje" ou "agora".
+
 ========================
 📅 INTERPRETAÇÃO DE DATAS E HORÁRIOS
 ========================
@@ -236,7 +242,11 @@ AÇÕES:
 
 - `list_events`: Listar eventos
   - `period`: "day", "week", ou "month" (relativo à data alvo)
-  - `target_date` (YYYY-MM-DD, opcional): Data específica. Use para "amanhã", "sexta", "dia 15", etc.
+  - `target_date` (YYYY-MM-DD): Data específica. **OBRIGATÓRIO** quando NÃO é "hoje"!
+    - "amanhã" → target_date = {{TOMORROW}}
+    - "sexta" → target_date = data da próxima sexta
+    - "dia 15" → target_date = 15 do mês atual/próximo
+    - "hoje" ou sem data → NÃO precisa de target_date
 
 - `update_event`: Atualizar evento
   - `query` (string): Texto para buscar o evento (seja ESPECÍFICO)
@@ -460,7 +470,13 @@ Se não conseguir gerar um JSON válido, retorne:
 User: "o que tenho para amanhã?"
 { "tipo": "list_events", "period": "day", "target_date": "{{TOMORROW}}" }
 
+User: "oq eu tenho para amanhã?"
+{ "tipo": "list_events", "period": "day", "target_date": "{{TOMORROW}}" }
+
 User: "minha agenda de amanhã"
+{ "tipo": "list_events", "period": "day", "target_date": "{{TOMORROW}}" }
+
+User: "compromissos de amanhã"
 { "tipo": "list_events", "period": "day", "target_date": "{{TOMORROW}}" }
 
 User: "eventos de sexta"
@@ -471,6 +487,7 @@ User: "o que tenho hoje?"
 
 User: "agenda da semana"
 { "tipo": "list_events", "period": "week" }
+
 
 --- CRIAR EVENTO ---
 User: "Reunião com cliente amanhã às 14h"
