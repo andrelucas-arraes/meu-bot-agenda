@@ -78,8 +78,11 @@ async function refreshDataCache() {
         const end = now.plus({ hours: 12 });
         const events = await googleService.listEvents(now.toISO(), end.toISO());
 
-        // 2. Tarefas
-        const tasks = await googleService.listTasks();
+        // 2. Tarefas (de todas as listas)
+        const taskGroups = await googleService.listTasksGrouped();
+        const tasks = taskGroups.flatMap(group =>
+            group.tasks.map(t => ({ ...t, listName: group.title }))
+        );
 
         // 3. Trello
         const trelloCards = await trelloService.listAllCards();
@@ -116,7 +119,10 @@ async function invalidateCache(type = 'all') {
         }
 
         if (type === 'all' || type === 'tasks') {
-            memoryCache.tasks = await googleService.listTasks();
+            const taskGroups = await googleService.listTasksGrouped();
+            memoryCache.tasks = taskGroups.flatMap(group =>
+                group.tasks.map(t => ({ ...t, listName: group.title }))
+            );
         }
 
         if (type === 'all' || type === 'trello') {
@@ -188,7 +194,10 @@ function initScheduler(bot) {
 
             if (memoryCache.tasks.length > 0) {
                 msg += `📝 *Pendências (Google Tasks):*\n`;
-                memoryCache.tasks.slice(0, 10).forEach(t => msg += `   ▫️ ${t.title}\n`);
+                memoryCache.tasks.slice(0, 10).forEach(t => {
+                    const prefix = t.listName ? `[${t.listName}] ` : '';
+                    msg += `   ▫️ ${prefix}${t.title}\n`;
+                });
                 if (memoryCache.tasks.length > 10) msg += `   ...e mais ${memoryCache.tasks.length - 10} tarefas.\n`;
                 msg += '\n';
             }
@@ -277,7 +286,10 @@ function initScheduler(bot) {
         // 2. Tarefas
         if (tasks.length > 0) {
             msg += `📝 *Pendências (${tasks.length}):*\n`;
-            tasks.slice(0, 5).forEach(t => msg += `   ▫️ ${t.title || t.name}\n`);
+            tasks.slice(0, 5).forEach(t => {
+                const prefix = t.listName ? `[${t.listName}] ` : '';
+                msg += `   ▫️ ${prefix}${t.title || t.name}\n`;
+            });
             if (tasks.length > 5) msg += `   ...e mais ${tasks.length - 5}.\n`;
             msg += '\n';
         }
