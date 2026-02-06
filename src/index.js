@@ -1025,17 +1025,32 @@ bot.on('text', async (ctx) => {
                 await googleService.updateEvent(id, updates);
                 await ctx.reply('✅ Local atualizado!');
             } else if (field === 'time') {
+                // Check if user wants to cancel the edit
+                if (text.toLowerCase() === 'cancelar' || text.toLowerCase() === 'voltar') {
+                    await ctx.reply('👍 Edição de horário cancelada.');
+                    delete ctx.session.pendingEventUpdate;
+                    return;
+                }
+
                 // Usa a IA para interpretar a nova data
-                const interpretation = await interpretMessage(`agendar para ${text}`, userId);
+                const interpretation = await interpretMessage(`alterar horário para ${text}`, userId);
                 const intent = Array.isArray(interpretation) ? interpretation[0] : interpretation;
 
                 if (intent.start) {
                     updates.start = intent.start;
                     if (intent.end) updates.end = intent.end;
+                    else {
+                        // Se não tiver fim, assume 1h de duração padrão se for com hora
+                        if (updates.start.includes('T')) {
+                            const startDt = DateTime.fromISO(updates.start);
+                            updates.end = startDt.plus({ hours: 1 }).toISO();
+                        }
+                    }
+
                     await googleService.updateEvent(id, updates);
-                    await ctx.reply(`✅ Horário atualizado para ${formatFriendlyDate(intent.start)}!`);
+                    await ctx.reply(`✅ Horário atualizado para ${formatFriendlyDate(updates.start)}!`);
                 } else {
-                    await ctx.reply('⚠️ Não consegui entender o novo horário. Tente novamente (ex: "amanhã às 15h").');
+                    await ctx.reply('⚠️ Não consegui entender o novo horário. Tente novamente (ex: "amanhã às 15h") ou digite "cancelar" para sair.');
                     return; // Não limpa sessão para permitir tentar de novo
                 }
             }
