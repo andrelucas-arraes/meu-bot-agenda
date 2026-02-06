@@ -74,6 +74,40 @@ const completeDeleteTaskSchema = z.object({
     query: z.string().min(1, 'Query de busca é obrigatória'),
 });
 
+// Novos schemas para Google Tasks Avançado
+const createTaskListSchema = z.object({
+    tipo: z.literal('create_tasklist'),
+    title: z.string().min(1, 'Título da lista é obrigatório'),
+});
+
+const updateTaskListSchema = z.object({
+    tipo: z.literal('update_tasklist'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+    title: z.string().min(1, 'Novo título é obrigatório'),
+});
+
+const deleteTaskListSchema = z.object({
+    tipo: z.literal('delete_tasklist'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+});
+
+const listTaskListSchema = z.object({
+    tipo: z.literal('list_tasklists')
+});
+
+const taskMoveSchema = z.object({
+    tipo: z.literal('move_task'),
+    query: z.string().min(1, 'Query de busca da tarefa é obrigatória'),
+    parent_query: z.string().optional(), // buscar tarefa pai por texto
+    list_query: z.string().optional(), // buscar lista destino por texto
+    previous_query: z.string().optional() // buscar tarefa anterior por texto
+});
+
+const taskClearSchema = z.object({
+    tipo: z.literal('clear_completed_tasks'),
+    list_query: z.string().min(1, 'Nome da lista é obrigatório'),
+});
+
 // Schema para Trello
 const trelloCreateSchema = z.object({
     tipo: z.enum(['trello_create', 'trello']),
@@ -124,10 +158,73 @@ const trelloAddMemberSchema = z.object({
     member: z.string().min(1, 'Nome do membro é obrigatório'),
 });
 
+// Novos schemas para endpoints avançados do Trello
+const trelloDeleteSchema = z.object({
+    tipo: z.literal('trello_delete'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+});
+
+const trelloSearchSchema = z.object({
+    tipo: z.literal('trello_search'),
+    query: z.string().min(1, 'Termo de busca é obrigatório'),
+});
+
+const trelloGetSchema = z.object({
+    tipo: z.literal('trello_get'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+});
+
+const trelloChecklistSchema = z.object({
+    tipo: z.literal('trello_checklist'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+});
+
+const trelloCheckItemSchema = z.object({
+    tipo: z.literal('trello_check_item'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+    item: z.union([z.string(), z.number()]).transform(val => String(val)),
+    state: z.enum(['complete', 'incomplete']).optional().default('complete'),
+});
+
+const trelloDeleteCheckItemSchema = z.object({
+    tipo: z.literal('trello_delete_check_item'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+    item: z.union([z.string(), z.number()]).transform(val => String(val)),
+});
+
+const trelloRemoveLabelSchema = z.object({
+    tipo: z.literal('trello_remove_label'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+    label: z.string().min(1, 'Nome da etiqueta é obrigatório'),
+});
+
 // Schema para chat
 const chatSchema = z.object({
     tipo: z.enum(['chat', 'neutro']),
     message: z.string(),
+});
+
+// Schema para Knowledge Base (Memória de Longo Prazo)
+const storeInfoSchema = z.object({
+    tipo: z.literal('store_info'),
+    key: z.string().min(1, 'Chave da informação é obrigatória'),
+    value: z.string().min(1, 'Valor da informação é obrigatório'),
+    category: z.string().optional(),
+});
+
+const queryInfoSchema = z.object({
+    tipo: z.literal('query_info'),
+    query: z.string().min(1, 'Query de busca é obrigatória'),
+});
+
+const listInfoSchema = z.object({
+    tipo: z.literal('list_info'),
+    category: z.string().optional(),
+});
+
+const deleteInfoSchema = z.object({
+    tipo: z.literal('delete_info'),
+    key: z.string().min(1, 'Chave da informação é obrigatória'),
 });
 
 // Mapeamento de tipo para schema
@@ -153,8 +250,28 @@ const schemaMap = {
     'trello_add_comment': trelloAddCommentSchema,
     'trello_add_label': trelloAddLabelSchema,
     'trello_add_member': trelloAddMemberSchema,
+    // Novos endpoints avançados do Trello
+    'trello_delete': trelloDeleteSchema,
+    'trello_search': trelloSearchSchema,
+    'trello_get': trelloGetSchema,
+    'trello_checklist': trelloChecklistSchema,
+    'trello_check_item': trelloCheckItemSchema,
+    'trello_delete_check_item': trelloDeleteCheckItemSchema,
+    'trello_remove_label': trelloRemoveLabelSchema,
+    // Novos endpoints avançados de Tasks
+    'create_tasklist': createTaskListSchema,
+    'update_tasklist': updateTaskListSchema,
+    'delete_tasklist': deleteTaskListSchema,
+    'list_tasklists': listTaskListSchema,
+    'move_task': taskMoveSchema,
+    'clear_completed_tasks': taskClearSchema,
     'chat': chatSchema,
     'neutro': chatSchema,
+    // Knowledge Base (Memória de Longo Prazo)
+    'store_info': storeInfoSchema,
+    'query_info': queryInfoSchema,
+    'list_info': listInfoSchema,
+    'delete_info': deleteInfoSchema,
 };
 
 /**

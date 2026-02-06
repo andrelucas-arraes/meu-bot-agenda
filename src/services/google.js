@@ -180,6 +180,102 @@ async function deleteEvent(eventId) {
 
 // --- TASKS ---
 
+// --- TASKLISTS (Gerenciamento de Listas) ---
+
+async function createTaskList(title) {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        log.google('Criando lista de tarefas', { title });
+
+        const response = await service.tasklists.insert({
+            resource: { title }
+        });
+
+        log.google('Lista criada', { id: response.data.id });
+        return response.data;
+    }, 'createTaskList');
+}
+
+async function deleteTaskList(taskListId) {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        log.google('Deletando lista de tarefas', { taskListId });
+
+        await service.tasklists.delete({
+            tasklist: taskListId
+        });
+    }, 'deleteTaskList');
+}
+
+async function updateTaskList(taskListId, title) {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        log.google('Atualizando lista de tarefas', { taskListId, title });
+
+        const response = await service.tasklists.patch({
+            tasklist: taskListId,
+            resource: { title }
+        });
+
+        return response.data;
+    }, 'updateTaskList');
+}
+
+async function clearCompletedTasks(taskListId) {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        log.google('Limpando tarefas concluídas', { taskListId });
+
+        await service.tasks.clear({
+            tasklist: taskListId
+        });
+    }, 'clearCompletedTasks');
+}
+
+// --- TASKS AVANÇADO ---
+
+async function getTask(taskId, taskListId = '@default') {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        const response = await service.tasks.get({
+            tasklist: taskListId,
+            task: taskId
+        });
+
+        return response.data;
+    }, 'getTask');
+}
+
+async function moveTask(taskId, taskListId = '@default', parent = null, previous = null) {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        const params = {
+            tasklist: taskListId,
+            task: taskId
+        };
+        if (parent) params.parent = parent;
+        if (previous) params.previous = previous;
+
+        log.google('Movendo tarefa', { taskId, parent, previous });
+
+        const response = await service.tasks.move(params);
+        return response.data;
+    }, 'moveTask');
+}
+
+// Atualização do createTask para suportar hierarquia
 async function createTask(taskData, taskListId = '@default') {
     return withGoogleRetry(async () => {
         const auth = await getAuthClient();
@@ -197,125 +293,22 @@ async function createTask(taskData, taskListId = '@default') {
             }
         }
 
-        log.google('Criando tarefa', { title: resource.title });
-
-        const response = await tasks.tasks.insert({
+        const params = {
             tasklist: taskListId,
             resource: resource,
-        });
+        };
+
+        // Suporte a hierarquia (subtarefas)
+        if (taskData.parent) params.parent = taskData.parent;
+        if (taskData.previous) params.previous = taskData.previous;
+
+        log.google('Criando tarefa', { title: resource.title, parent: taskData.parent });
+
+        const response = await tasks.tasks.insert(params);
 
         log.google('Tarefa criada', { id: response.data.id });
         return response.data;
     }, 'createTask');
-}
-
-async function listTasks(timeMin, timeMax, showCompleted = false) {
-    const grouped = await listTasksGrouped(timeMin, timeMax, showCompleted);
-    return grouped.reduce((acc, group) => acc.concat(group.tasks), []);
-}
-
-async function updateTask(taskId, updates, taskListId = '@default') {
-    return withGoogleRetry(async () => {
-        const auth = await getAuthClient();
-        const service = google.tasks({ version: 'v1', auth });
-
-        const resource = {};
-        if (updates.title) resource.title = updates.title;
-        if (updates.notes) resource.notes = updates.notes;
-        if (updates.due) resource.due = updates.due + 'T00:00:00.000Z';
-        if (updates.status) resource.status = updates.status;
-
-        log.google('Atualizando tarefa', { taskId });
-
-        const response = await service.tasks.patch({
-            tasklist: taskListId,
-            task: taskId,
-            resource: resource
-        });
-        return response.data;
-    }, 'updateTask');
-}
-
-async function completeTask(taskId, taskListId = '@default') {
-    log.google('Completando tarefa', { taskId });
-    return updateTask(taskId, { status: 'completed' }, taskListId);
-}
-
-async function deleteTask(taskId, taskListId = '@default') {
-    return withGoogleRetry(async () => {
-        const auth = await getAuthClient();
-        const service = google.tasks({ version: 'v1', auth });
-
-        log.google('Deletando tarefa', { taskId });
-
-        await service.tasks.delete({
-            tasklist: taskListId,
-            task: taskId
-        });
-    }, 'deleteTask');
-}
-
-// --- HELPERS ---
-
-async function generateAuthUrl() {
-    const creds = await loadCredentials();
-    const oAuth2Client = new google.auth.OAuth2(
-        creds.client_id, creds.client_secret, creds.redirect_uri
-    );
-    return oAuth2Client.generateAuthUrl({ access_type: 'offline', scope: SCOPES });
-}
-
-async function getTokenFromCode(code) {
-    const creds = await loadCredentials();
-    const oAuth2Client = new google.auth.OAuth2(
-        creds.client_id, creds.client_secret, creds.redirect_uri
-    );
-    const { tokens } = await oAuth2Client.getToken(code);
-    oAuth2Client.setCredentials(tokens);
-    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
-    return tokens;
-}
-
-async function listTasksGrouped(timeMin, timeMax, showCompleted = false) {
-    return withGoogleRetry(async () => {
-        const auth = await getAuthClient();
-        const service = google.tasks({ version: 'v1', auth });
-
-        const listsResponse = await service.tasklists.list();
-        const taskLists = listsResponse.data.items || [];
-
-        const result = [];
-
-        for (const list of taskLists) {
-            const params = {
-                tasklist: list.id,
-                showCompleted: showCompleted,
-            };
-            if (timeMin) params.dueMin = timeMin;
-            if (timeMax) params.dueMax = timeMax;
-
-            const res = await service.tasks.list(params);
-            const items = res.data.items || [];
-
-            items.forEach(t => {
-                t.taskListId = list.id;
-                t.taskListName = list.title;
-            });
-
-            result.push({
-                id: list.id,
-                title: list.title,
-                tasks: items
-            });
-        }
-
-        log.google('Tarefas listadas', {
-            lists: result.length,
-            totalTasks: result.reduce((sum, g) => sum + g.tasks.length, 0)
-        });
-
-        return result;
-    }, 'listTasksGrouped');
 }
 
 module.exports = {
@@ -330,5 +323,12 @@ module.exports = {
     completeTask,
     deleteTask,
     generateAuthUrl,
-    getTokenFromCode
+    getTokenFromCode,
+    // Novos endpoints
+    createTaskList,
+    deleteTaskList,
+    updateTaskList,
+    clearCompletedTasks,
+    getTask,
+    moveTask
 };
