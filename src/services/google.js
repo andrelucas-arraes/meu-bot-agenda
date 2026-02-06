@@ -362,35 +362,19 @@ async function updateTask(taskId, taskListId = '@default', updates) {
         const auth = await getAuthClient();
         const service = google.tasks({ version: 'v1', auth });
 
-        const task = await service.tasks.get({
-            tasklist: taskListId,
-            task: taskId
-        });
+        const resource = { ...updates };
 
-        const resource = {
-            ...task.data,
-        };
-
-        if (updates.title) resource.title = updates.title;
-        if (updates.notes) resource.notes = updates.notes;
-        if (updates.status) resource.status = updates.status;
-        if (updates.due) {
-            if (updates.due.includes('T')) {
-                resource.due = updates.due.endsWith('Z') ? updates.due : updates.due + 'Z';
+        if (resource.due) {
+            if (resource.due.includes('T')) {
+                resource.due = resource.due.endsWith('Z') ? resource.due : resource.due + 'Z';
             } else {
-                resource.due = updates.due + 'T00:00:00.000Z';
+                resource.due = resource.due + 'T00:00:00.000Z';
             }
         }
-        delete resource.id;
-        delete resource.etag;
-        delete resource.updated;
-        delete resource.selfLink;
-        delete resource.position;
 
+        log.google('Atualizando tarefa (patch)', { taskId, taskListId });
 
-        log.google('Atualizando tarefa', { taskId });
-
-        const response = await service.tasks.update({
+        const response = await service.tasks.patch({
             tasklist: taskListId,
             task: taskId,
             resource: resource
