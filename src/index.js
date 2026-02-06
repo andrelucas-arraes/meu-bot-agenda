@@ -1296,13 +1296,29 @@ bot.on('text', async (ctx) => {
         await ctx.sendChatAction('typing');
         let intentResult = await interpretMessage(text, userId, getUserContext(userId));
 
-        // Fallback de segurança: Se o usuário disse "amanhã" e a IA não pegou a data
-        if (text.toLowerCase().includes('amanhã')) {
-            const tomorrowStr = DateTime.now().setZone('America/Sao_Paulo').plus({ days: 1 }).toFormat('yyyy-MM-dd');
+        // Fallback de segurança: Se o usuário mencionou datas relativas e a IA se confundiu ou omitiu
+        const nowSP = DateTime.now().setZone('America/Sao_Paulo');
+        const lowText = text.toLowerCase();
+
+        let forcedDate = null;
+        if (lowText.includes('amanhã') && !lowText.includes('depois de amanhã')) {
+            forcedDate = nowSP.plus({ days: 1 }).toFormat('yyyy-MM-dd');
+        } else if (lowText.includes('depois de amanhã')) {
+            forcedDate = nowSP.plus({ days: 2 }).toFormat('yyyy-MM-dd');
+        }
+
+        if (forcedDate) {
             if (Array.isArray(intentResult)) {
-                intentResult.forEach(i => { if (!i.target_date) i.target_date = tomorrowStr; });
-            } else if (intentResult && !intentResult.target_date) {
-                intentResult.target_date = tomorrowStr;
+                intentResult.forEach(i => {
+                    // Sobrescreve se for igual a hoje ou se estiver nulo
+                    if (!i.target_date || i.target_date === nowSP.toFormat('yyyy-MM-dd')) {
+                        i.target_date = forcedDate;
+                    }
+                });
+            } else if (intentResult) {
+                if (!intentResult.target_date || intentResult.target_date === nowSP.toFormat('yyyy-MM-dd')) {
+                    intentResult.target_date = forcedDate;
+                }
             }
         }
 
