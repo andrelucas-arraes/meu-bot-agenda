@@ -337,16 +337,18 @@ bot.hears('✅ Minhas Tarefas', async (ctx) => {
         let totalTasks = 0;
 
         groups.forEach(group => {
+            msg += `📁 *${group.title}*\n`;
             if (group.tasks.length > 0) {
-                msg += `📁 *${group.title}*\n`;
                 group.tasks.forEach(t => {
                     msg += `   ▫️ ${t.title}`;
                     if (t.notes) msg += `\n      📝 _${t.notes}_`;
                     msg += `\n`;
                     totalTasks++;
                 });
-                msg += '\n';
+            } else {
+                msg += `   _(vazia)_\n`;
             }
+            msg += '\n';
         });
 
         if (totalTasks === 0) {
@@ -1528,10 +1530,45 @@ async function processIntent(ctx, intent) {
             await ctx.reply(suggestions.message, { parse_mode: 'Markdown', ...suggestions.keyboard });
         }
 
-    } else if (intent.tipo === 'trello_list') {
-        const groups = await trelloService.listAllCardsGrouped();
+    } else if (intent.tipo === 'trello_clear_list') {
+        if (!intent.list_query) {
+            return ctx.reply('⚠️ Qual lista você quer limpar? (Ex: "Limpar lista Feito")');
+        }
 
+        const groups = await trelloService.listAllCardsGrouped();
+        const targetList = findTrelloListFuzzy(groups, intent.list_query);
+
+        if (!targetList) {
+            return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.`);
+        }
+
+        if (targetList.cards.length === 0) {
+            return ctx.reply(`✅ A lista "*${targetList.name}*" já está vazia!`, { parse_mode: 'Markdown' });
+        }
+
+        await ctx.reply(`⏳ Arquivando ${targetList.cards.length} cards da lista "${targetList.name}"...`);
+
+        // Arquiva em paralelo
+        const promises = targetList.cards.map(c => trelloService.updateCard(c.id, { closed: true }));
+        await Promise.all(promises);
+
+        scheduler.invalidateCache('trello');
+        await ctx.reply(`📦 Todos os cards da lista "*${targetList.name}*" foram arquivados!`, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'trello_list') {
+        let groups = await trelloService.listAllCardsGrouped();
         if (groups.length === 0) return ctx.reply('🗂️ Nenhuma lista encontrada no Trello.');
+
+        // Filtragem por lista
+        if (intent.list_query) {
+            // Reutiliza a lógica fuzzy para encontrar a lista certa ou filtrar
+            const filtered = findTrelloListFuzzy(groups, intent.list_query);
+            if (filtered) {
+                groups = [filtered]; // Mostra apenas a lista encontrada
+            } else {
+                return ctx.reply(`⚠️ Nenhuma lista encontrada com o nome "${intent.list_query}".`);
+            }
+        }
 
         let msg = '*Quadro Trello:*\n\n';
         groups.forEach(group => {

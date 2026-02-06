@@ -324,6 +324,10 @@ AÇÕES BÁSICAS:
   - `priority` (string, opcional): "high", "medium"
 
 - `trello_list`: Listar todos os cards
+  - `list_query` (string, opcional): Filtrar por nome da lista (ex: "A Fazer")
+
+- `trello_clear_list`: Arquivar TODOS os cards de uma lista
+  - `list_query` (string): Nome da lista
 
 - `trello_update`: Atualizar card
   - `query` (string): Nome do card para buscar (seja ESPECÍFICO)
