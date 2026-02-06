@@ -915,8 +915,17 @@ async function findEventByQuery(query, targetDate = null) {
 }
 
 async function findTaskByQuery(query) {
-    const tasks = await googleService.listTasks();
-    return findTaskFuzzy(tasks, query);
+    // FIX: Busca em TODAS as listas, não apenas na default
+    const groups = await googleService.listTasksGrouped();
+    let allTasks = [];
+
+    groups.forEach(group => {
+        // Adiciona ID da lista em cada tarefa para saber de onde ela veio
+        const tasksWithListId = group.tasks.map(t => ({ ...t, taskListId: group.id, listTitle: group.title }));
+        allTasks = allTasks.concat(tasksWithListId);
+    });
+
+    return findTaskFuzzy(allTasks, query);
 }
 
 async function findTrelloCardByQuery(query) {
@@ -1401,9 +1410,42 @@ async function processIntent(ctx, intent) {
         scheduler.invalidateCache('tasks');
         await ctx.reply(`🧹 Tarefas concluídas da lista "*${targetList.title}*" foram limpas!`, { parse_mode: 'Markdown' });
 
-    } else if (intent.tipo === 'list_tasks') {
+    } else if (intent.tipo === 'complete_tasklist') {
+        if (!intent.list_query) {
+            return ctx.reply('⚠️ Qual lista você quer concluir? (Ex: "Marcar todas do Escritório")');
+        }
+
         const groups = await googleService.listTasksGrouped();
+        const targetList = groups.find(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
+
+        if (!targetList) {
+            return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.`);
+        }
+
+        if (targetList.tasks.length === 0) {
+            return ctx.reply(`✅ A lista "*${targetList.title}*" já está vazia!`, { parse_mode: 'Markdown' });
+        }
+
+        await ctx.reply(`⏳ Marcando ${targetList.tasks.length} tarefas como concluídas na lista "${targetList.title}"...`);
+
+        // Processa em paralelo
+        const promises = targetList.tasks.map(t => googleService.completeTask(t.id, targetList.id));
+        await Promise.all(promises);
+
+        scheduler.invalidateCache('tasks');
+        await ctx.reply(`✅ Todas as tarefas da lista "*${targetList.title}*" foram concluídas!`, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'list_tasks') {
+        let groups = await googleService.listTasksGrouped();
         if (groups.length === 0) return ctx.reply('✅ Nenhuma lista de tarefas encontrada.');
+
+        // Filtragem por lista
+        if (intent.list_query) {
+            groups = groups.filter(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
+            if (groups.length === 0) {
+                return ctx.reply(`⚠️ Nenhuma lista encontrada com o nome "${intent.list_query}".`);
+            }
+        }
 
         let msg = '';
         groups.forEach(group => {

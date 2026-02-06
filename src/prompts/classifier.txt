@@ -297,6 +297,20 @@ AÇÕES AVANÇADAS (NOVOS):
 - `clear_completed_tasks`: Limpar concluídas (faxina)
   - `list_query` (string): Nome da lista para limpar
 
+- `complete_tasklist`: Marcar TODAS as tarefas de uma lista como concluídas
+  - `list_query` (string): Nome da lista
+
+- `list_tasks`: Listar tarefas pendentes
+  - `list_query` (string, opcional): Filtrar por nome da lista (ex: "Escritório")
+
+========================
+⚠️ PARSING DE LISTAS E COLAGEM
+========================
+Se o usuário colar uma lista de tarefas para você processar (ex: "marque estas como feitas"):
+1. IGNORE linhas que são apenas títulos de lista ou pastas (ex: "📁 Escritório", "Card Trello:", "Eventos:")
+2. Gere uma ação para cada ITEM individual da lista.
+3. Se a lista for muito longa ou se o usuário pedir explicitamente "todas da lista X", use `complete_tasklist`.
+
 ========================
 🗂️ TIPO: TRELLO (Projetos)
 ========================
@@ -464,6 +478,12 @@ User: "Transforma a tarefa 'Revisar' em subtarefa de 'Projeto X'"
 
 User: "Limpa as tarefas feitas da lista Pessoal"
 { "tipo": "clear_completed_tasks", "list_query": "Pessoal" }
+
+User: "Marque todas as tarefas do escritório como concluídas"
+{ "tipo": "complete_tasklist", "list_query": "Escritório" }
+
+User: "Quais tarefas do escritório?"
+{ "tipo": "list_tasks", "list_query": "Escritório" }
 
 --- TRELLO ---
 User: "Criar card para refatorar módulo com checklist: testes, deploy"
