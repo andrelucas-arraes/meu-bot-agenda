@@ -369,15 +369,11 @@ async function updateTask(taskId, taskListId = '@default', updates) {
 
         const resource = {
             ...task.data,
-            ...updates
         };
-        delete resource.id;
-        delete resource.etag;
-        delete resource.updated;
-        delete resource.selfLink;
-        delete resource.position;
-        if (!updates.status) delete resource.status;
 
+        if (updates.title) resource.title = updates.title;
+        if (updates.notes) resource.notes = updates.notes;
+        if (updates.status) resource.status = updates.status;
         if (updates.due) {
             if (updates.due.includes('T')) {
                 resource.due = updates.due.endsWith('Z') ? updates.due : updates.due + 'Z';
@@ -385,6 +381,12 @@ async function updateTask(taskId, taskListId = '@default', updates) {
                 resource.due = updates.due + 'T00:00:00.000Z';
             }
         }
+        delete resource.id;
+        delete resource.etag;
+        delete resource.updated;
+        delete resource.selfLink;
+        delete resource.position;
+
 
         log.google('Atualizando tarefa', { taskId });
 
