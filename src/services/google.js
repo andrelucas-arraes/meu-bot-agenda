@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
 const { DateTime } = require('luxon');
+const { log } = require('../utils/logger');
+const { withGoogleRetry } = require('../utils/retry');
 
 const SCOPES = [
     'https://www.googleapis.com/auth/calendar',
@@ -55,171 +57,202 @@ async function getAuthClient() {
 // --- CALENDAR ---
 
 async function createEvent(eventData) {
-    const auth = await getAuthClient();
-    const calendar = google.calendar({ version: 'v3', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const calendar = google.calendar({ version: 'v3', auth });
 
-    const resource = {
-        summary: eventData.summary,
-        description: eventData.description,
-        location: eventData.location,
-        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] },
-    };
-
-    if (eventData.start && eventData.start.includes('T')) {
-        resource.start = { dateTime: eventData.start, timeZone: 'America/Sao_Paulo' };
-    } else {
-        resource.start = { date: eventData.start };
-    }
-
-    if (eventData.end && eventData.end.includes('T')) {
-        resource.end = { dateTime: eventData.end, timeZone: 'America/Sao_Paulo' };
-    } else {
-        resource.end = { date: eventData.end };
-    }
-
-    if (eventData.attendees && Array.isArray(eventData.attendees)) {
-        resource.attendees = eventData.attendees.map(email => ({ email }));
-    }
-
-    if (eventData.recurrence) {
-        // Ex: 'RRULE:FREQ=WEEKLY;COUNT=10'
-        resource.recurrence = Array.isArray(eventData.recurrence) ? eventData.recurrence : [eventData.recurrence];
-    }
-    if (eventData.online) {
-        resource.conferenceData = {
-            createRequest: {
-                requestId: Math.random().toString(36).substring(7),
-                conferenceSolutionKey: { type: 'hangoutsMeet' },
-            },
+        const resource = {
+            summary: eventData.summary,
+            description: eventData.description,
+            location: eventData.location,
+            reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] },
         };
-    }
 
-    const response = await calendar.events.insert({
-        calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
-        resource: resource,
-        conferenceDataVersion: 1,
-    });
-    return response.data;
+        if (eventData.start && eventData.start.includes('T')) {
+            resource.start = { dateTime: eventData.start, timeZone: 'America/Sao_Paulo' };
+        } else if (eventData.start) {
+            resource.start = { date: eventData.start };
+        }
+
+        if (eventData.end && eventData.end.includes('T')) {
+            resource.end = { dateTime: eventData.end, timeZone: 'America/Sao_Paulo' };
+        } else if (eventData.end) {
+            resource.end = { date: eventData.end };
+        }
+
+        if (eventData.attendees && Array.isArray(eventData.attendees)) {
+            resource.attendees = eventData.attendees.map(email => ({ email }));
+        }
+
+        if (eventData.recurrence) {
+            resource.recurrence = Array.isArray(eventData.recurrence) ? eventData.recurrence : [eventData.recurrence];
+        }
+
+        if (eventData.online) {
+            resource.conferenceData = {
+                createRequest: {
+                    requestId: Math.random().toString(36).substring(7),
+                    conferenceSolutionKey: { type: 'hangoutsMeet' },
+                },
+            };
+        }
+
+        log.google('Criando evento', { summary: eventData.summary });
+
+        const response = await calendar.events.insert({
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+            resource: resource,
+            conferenceDataVersion: 1,
+        });
+
+        log.google('Evento criado', { id: response.data.id, summary: response.data.summary });
+        return response.data;
+    }, 'createEvent');
 }
 
 async function listEvents(timeMin, timeMax) {
-    const auth = await getAuthClient();
-    const calendar = google.calendar({ version: 'v3', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const calendar = google.calendar({ version: 'v3', auth });
 
-    const response = await calendar.events.list({
-        calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
-        timeMin: timeMin,
-        timeMax: timeMax,
-        singleEvents: true,
-        orderBy: 'startTime',
-    });
-    return response.data.items || [];
+        const response = await calendar.events.list({
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+            timeMin: timeMin,
+            timeMax: timeMax,
+            singleEvents: true,
+            orderBy: 'startTime',
+        });
+
+        log.google('Eventos listados', { count: response.data.items?.length || 0 });
+        return response.data.items || [];
+    }, 'listEvents');
 }
 
 async function updateEvent(eventId, updates) {
-    const auth = await getAuthClient();
-    const calendar = google.calendar({ version: 'v3', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const calendar = google.calendar({ version: 'v3', auth });
 
-    // First get the event to merge properties if necessary, but PATCH semantics usually handle this.
-    // However, for start/end, we need the full object structure.
+        const resource = {};
+        if (updates.summary) resource.summary = updates.summary;
+        if (updates.description) resource.description = updates.description;
+        if (updates.location) resource.location = updates.location;
+        if (updates.start) {
+            resource.start = updates.start.includes('T')
+                ? { dateTime: updates.start, timeZone: 'America/Sao_Paulo' }
+                : { date: updates.start };
+        }
+        if (updates.end) {
+            resource.end = updates.end.includes('T')
+                ? { dateTime: updates.end, timeZone: 'America/Sao_Paulo' }
+                : { date: updates.end };
+        }
+        if (updates.colorId) resource.colorId = updates.colorId;
 
-    const resource = {};
-    if (updates.summary) resource.summary = updates.summary;
-    if (updates.description) resource.description = updates.description;
-    if (updates.location) resource.location = updates.location;
-    if (updates.start) {
-        resource.start = updates.start.includes('T')
-            ? { dateTime: updates.start, timeZone: 'America/Sao_Paulo' }
-            : { date: updates.start };
-    }
-    if (updates.end) {
-        resource.end = updates.end.includes('T')
-            ? { dateTime: updates.end, timeZone: 'America/Sao_Paulo' }
-            : { date: updates.end };
-    }
-    if (updates.colorId) resource.colorId = updates.colorId;
+        log.google('Atualizando evento', { eventId });
 
-    const response = await calendar.events.patch({
-        calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
-        eventId: eventId,
-        resource: resource
-    });
-    return response.data;
+        const response = await calendar.events.patch({
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+            eventId: eventId,
+            resource: resource
+        });
+
+        log.google('Evento atualizado', { id: response.data.id });
+        return response.data;
+    }, 'updateEvent');
 }
 
 async function deleteEvent(eventId) {
-    const auth = await getAuthClient();
-    const calendar = google.calendar({ version: 'v3', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const calendar = google.calendar({ version: 'v3', auth });
 
-    await calendar.events.delete({
-        calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
-        eventId: eventId
-    });
+        log.google('Deletando evento', { eventId });
+
+        await calendar.events.delete({
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+            eventId: eventId
+        });
+
+        log.google('Evento deletado', { eventId });
+    }, 'deleteEvent');
 }
 
 // --- TASKS ---
 
 async function createTask(taskData, taskListId = '@default') {
-    const auth = await getAuthClient();
-    const tasks = google.tasks({ version: 'v1', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const tasks = google.tasks({ version: 'v1', auth });
 
-    const resource = {
-        title: taskData.title,
-        notes: taskData.notes,
-    };
-    if (taskData.due) {
-        // If it looks like a full DateTime (has 'T'), just append Z if missing
-        if (taskData.due.includes('T')) {
-            resource.due = taskData.due.endsWith('Z') ? taskData.due : taskData.due + 'Z';
-        } else {
-            // Assume it's just a date YYYY-MM-DD
-            resource.due = taskData.due + 'T00:00:00.000Z';
+        const resource = {
+            title: taskData.title || taskData.name,
+            notes: taskData.notes,
+        };
+        if (taskData.due) {
+            if (taskData.due.includes('T')) {
+                resource.due = taskData.due.endsWith('Z') ? taskData.due : taskData.due + 'Z';
+            } else {
+                resource.due = taskData.due + 'T00:00:00.000Z';
+            }
         }
-    }
 
-    const response = await tasks.tasks.insert({
-        tasklist: taskListId,
-        resource: resource,
-    });
-    return response.data;
+        log.google('Criando tarefa', { title: resource.title });
+
+        const response = await tasks.tasks.insert({
+            tasklist: taskListId,
+            resource: resource,
+        });
+
+        log.google('Tarefa criada', { id: response.data.id });
+        return response.data;
+    }, 'createTask');
 }
 
 async function listTasks(timeMin, timeMax, showCompleted = false) {
     const grouped = await listTasksGrouped(timeMin, timeMax, showCompleted);
-    // Flatten
     return grouped.reduce((acc, group) => acc.concat(group.tasks), []);
 }
 
 async function updateTask(taskId, updates, taskListId = '@default') {
-    const auth = await getAuthClient();
-    const service = google.tasks({ version: 'v1', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
 
-    const resource = {};
-    if (updates.title) resource.title = updates.title;
-    if (updates.notes) resource.notes = updates.notes;
-    if (updates.due) resource.due = updates.due + 'T00:00:00.000Z';
-    if (updates.status) resource.status = updates.status;
+        const resource = {};
+        if (updates.title) resource.title = updates.title;
+        if (updates.notes) resource.notes = updates.notes;
+        if (updates.due) resource.due = updates.due + 'T00:00:00.000Z';
+        if (updates.status) resource.status = updates.status;
 
-    const response = await service.tasks.patch({
-        tasklist: taskListId,
-        task: taskId,
-        resource: resource
-    });
-    return response.data;
+        log.google('Atualizando tarefa', { taskId });
+
+        const response = await service.tasks.patch({
+            tasklist: taskListId,
+            task: taskId,
+            resource: resource
+        });
+        return response.data;
+    }, 'updateTask');
 }
 
 async function completeTask(taskId, taskListId = '@default') {
+    log.google('Completando tarefa', { taskId });
     return updateTask(taskId, { status: 'completed' }, taskListId);
 }
 
 async function deleteTask(taskId, taskListId = '@default') {
-    const auth = await getAuthClient();
-    const service = google.tasks({ version: 'v1', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
 
-    await service.tasks.delete({
-        tasklist: taskListId,
-        task: taskId
-    });
+        log.google('Deletando tarefa', { taskId });
+
+        await service.tasks.delete({
+            tasklist: taskListId,
+            task: taskId
+        });
+    }, 'deleteTask');
 }
 
 // --- HELPERS ---
@@ -244,10 +277,10 @@ async function getTokenFromCode(code) {
 }
 
 async function listTasksGrouped(timeMin, timeMax, showCompleted = false) {
-    const auth = await getAuthClient();
-    const service = google.tasks({ version: 'v1', auth });
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
 
-    try {
         const listsResponse = await service.tasklists.list();
         const taskLists = listsResponse.data.items || [];
 
@@ -264,7 +297,6 @@ async function listTasksGrouped(timeMin, timeMax, showCompleted = false) {
             const res = await service.tasks.list(params);
             const items = res.data.items || [];
 
-            // Enrich items with list info just in case
             items.forEach(t => {
                 t.taskListId = list.id;
                 t.taskListName = list.title;
@@ -276,11 +308,14 @@ async function listTasksGrouped(timeMin, timeMax, showCompleted = false) {
                 tasks: items
             });
         }
+
+        log.google('Tarefas listadas', {
+            lists: result.length,
+            totalTasks: result.reduce((sum, g) => sum + g.tasks.length, 0)
+        });
+
         return result;
-    } catch (error) {
-        console.error('Error listing tasks:', error);
-        return [];
-    }
+    }, 'listTasksGrouped');
 }
 
 module.exports = {
