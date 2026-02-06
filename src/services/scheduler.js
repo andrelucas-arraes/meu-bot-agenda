@@ -177,9 +177,42 @@ function initScheduler(bot) {
                 (e.start.date && e.start.date === todayStr);
         });
 
+        // Eventos não concluídos
+        const pendingEvents = todaysEvents.filter(e => !e.summary.startsWith('✅'));
+
+        // Tarefas com prazo hoje
+        const tasksWithDeadlineToday = memoryCache.tasks.filter(t => {
+            if (!t.due) return false;
+            return t.due.startsWith(todayStr);
+        });
+
+        // Trello "A Fazer"
+        const todoCards = memoryCache.trelloCards.filter(c =>
+            c.listName && (
+                c.listName.toLowerCase().includes('a fazer') ||
+                c.listName.toLowerCase().includes('to do') ||
+                c.listName.toLowerCase().includes('todo')
+            )
+        );
+
         let msg = `☀️ *Bom dia! Resumo de hoje (${now.toFormat('dd/MM')}):*\n\n`;
 
-        if (todaysEvents.length === 0 && memoryCache.tasks.length === 0 && memoryCache.trelloCards.length === 0) {
+        // ESTATÍSTICAS RÁPIDAS
+        msg += `📊 *Resumo:*\n`;
+        msg += `   • ${pendingEvents.length} eventos pendentes\n`;
+        msg += `   • ${memoryCache.tasks.length} tarefas pendentes\n`;
+        msg += `   • ${todoCards.length} cards no Trello\n\n`;
+
+        // ALERTAS DE PRAZO
+        if (tasksWithDeadlineToday.length > 0) {
+            msg += `⚠️ *VENCENDO HOJE:*\n`;
+            tasksWithDeadlineToday.forEach(t => {
+                msg += `   🔴 ${t.title}\n`;
+            });
+            msg += '\n';
+        }
+
+        if (todaysEvents.length === 0 && memoryCache.tasks.length === 0 && todoCards.length === 0) {
             msg += '🎉 Nada pendente. Você está livre!';
         } else {
             if (todaysEvents.length > 0) {
@@ -201,15 +234,6 @@ function initScheduler(bot) {
                 if (memoryCache.tasks.length > 10) msg += `   ...e mais ${memoryCache.tasks.length - 10} tarefas.\n`;
                 msg += '\n';
             }
-
-            // Filtra apenas cards da lista "A Fazer"
-            const todoCards = memoryCache.trelloCards.filter(c =>
-                c.listName && (
-                    c.listName.toLowerCase().includes('a fazer') ||
-                    c.listName.toLowerCase().includes('to do') ||
-                    c.listName.toLowerCase().includes('todo')
-                )
-            );
 
             if (todoCards.length > 0) {
                 msg += `🗂️ *Trello (A Fazer):*\n`;

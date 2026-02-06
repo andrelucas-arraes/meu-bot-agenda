@@ -12,6 +12,8 @@ const { rateLimiter } = require('./utils/rateLimiter');
 const { formatFriendlyDate, getEventStatusEmoji, formatEventForDisplay } = require('./utils/dateFormatter');
 const { findEventFuzzy, findTaskFuzzy, findTrelloCardFuzzy, findTrelloListFuzzy } = require('./utils/fuzzySearch');
 const { getEventSuggestions, getTaskSuggestions, getTrelloSuggestions, getConflictButtons } = require('./utils/suggestions');
+const actionHistory = require('./utils/actionHistory');
+const confirmation = require('./utils/confirmation');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
@@ -266,6 +268,172 @@ bot.action('help_back', (ctx) => {
 Escolha uma categoria abaixo para ver exemplos de comandos:
     `, { parse_mode: 'Markdown', ...keyboard });
 });
+
+// ============================================
+// COMANDO: /desfazer (Undo)
+// ============================================
+bot.command('desfazer', async (ctx) => {
+    const userId = String(ctx.from.id);
+    const lastAction = actionHistory.getLastAction(userId);
+
+    if (!lastAction) {
+        return ctx.reply('🔙 Nenhuma ação recente para desfazer.');
+    }
+
+    log.bot('Desfazer solicitado', { userId, actionType: lastAction.type });
+
+    try {
+        let undone = false;
+        let msg = '';
+
+        switch (lastAction.type) {
+            case 'create_event':
+                if (lastAction.result?.id) {
+                    await googleService.deleteEvent(lastAction.result.id);
+                    scheduler.invalidateCache('events');
+                    msg = `🔙 Evento "${lastAction.data.summary || lastAction.result.summary}" foi removido.`;
+                    undone = true;
+                }
+                break;
+
+            case 'complete_event':
+                if (lastAction.result?.id) {
+                    const originalSummary = lastAction.data.originalSummary || lastAction.result.summary.replace('✅ ', '');
+                    await googleService.updateEvent(lastAction.result.id, { summary: originalSummary });
+                    scheduler.invalidateCache('events');
+                    msg = `🔙 Evento "${originalSummary}" desmarcado como concluído.`;
+                    undone = true;
+                }
+                break;
+
+            case 'complete_task':
+                if (lastAction.result?.id) {
+                    await googleService.updateTask(lastAction.result.id, lastAction.result.taskListId || '@default', { status: 'needsAction' });
+                    scheduler.invalidateCache('tasks');
+                    msg = `🔙 Tarefa "${lastAction.data.title || lastAction.result.title}" reaberta.`;
+                    undone = true;
+                }
+                break;
+
+            case 'create_task':
+                if (lastAction.result?.id) {
+                    await googleService.deleteTask(lastAction.result.id, lastAction.result.taskListId || '@default');
+                    scheduler.invalidateCache('tasks');
+                    msg = `🔙 Tarefa "${lastAction.data.title}" foi removida.`;
+                    undone = true;
+                }
+                break;
+
+            case 'trello_create':
+                if (lastAction.result?.id) {
+                    await trelloService.deleteCard(lastAction.result.id);
+                    scheduler.invalidateCache('trello');
+                    msg = `🔙 Card "${lastAction.data.name}" foi removido.`;
+                    undone = true;
+                }
+                break;
+
+            case 'trello_archive':
+                if (lastAction.result?.id) {
+                    await trelloService.updateCard(lastAction.result.id, { closed: false });
+                    scheduler.invalidateCache('trello');
+                    msg = `🔙 Card "${lastAction.data.name}" foi restaurado.`;
+                    undone = true;
+                }
+                break;
+
+            default:
+                msg = `⚠️ Não é possível desfazer a ação "${lastAction.type}".`;
+        }
+
+        if (undone) {
+            actionHistory.markAsUndone(userId, lastAction.id);
+        }
+
+        ctx.reply(msg);
+
+    } catch (error) {
+        log.apiError('Undo', error);
+        ctx.reply(`❌ Erro ao desfazer: ${error.message}`);
+    }
+});
+
+// ============================================
+// HANDLERS DE CONFIRMAÇÃO
+// ============================================
+bot.action(/^confirm_yes_(.+)$/, async (ctx) => {
+    const confirmationId = ctx.match[1];
+    const userId = String(ctx.from.id);
+    const pending = confirmation.getPendingConfirmation(userId);
+
+    await ctx.answerCbQuery();
+
+    if (!pending || pending.id !== confirmationId) {
+        return ctx.editMessageText('⚠️ Esta confirmação expirou ou já foi processada.');
+    }
+
+    confirmation.clearConfirmation(userId);
+    log.bot('Confirmação aceita', { userId, actionType: pending.actionType });
+
+    try {
+        // Executa a ação confirmada
+        await executeConfirmedAction(ctx, pending);
+    } catch (error) {
+        log.apiError('ConfirmAction', error);
+        ctx.reply(`❌ Erro ao executar: ${error.message}`);
+    }
+});
+
+bot.action(/^confirm_no_(.+)$/, async (ctx) => {
+    const userId = String(ctx.from.id);
+    confirmation.clearConfirmation(userId);
+
+    await ctx.answerCbQuery('Ação cancelada');
+    ctx.editMessageText('❌ Ação cancelada.');
+});
+
+// Função que executa ações confirmadas
+async function executeConfirmedAction(ctx, pending) {
+    const userId = String(ctx.from.id);
+
+    switch (pending.actionType) {
+        case 'complete_all_events':
+            const events = pending.items;
+            const promises = events.map(e =>
+                googleService.updateEvent(e.id, { summary: `✅ ${e.summary}`, colorId: '8' })
+            );
+            await Promise.all(promises);
+            scheduler.invalidateCache('events');
+            actionHistory.recordAction(userId, pending.actionType, { count: events.length }, { eventIds: events.map(e => e.id) });
+            await ctx.editMessageText(`✅ ${events.length} eventos marcados como concluídos!`);
+            break;
+
+        case 'complete_all_tasks':
+            const tasks = pending.items;
+            const taskPromises = tasks.map(t =>
+                googleService.completeTask(t.id, t.taskListId || '@default')
+            );
+            await Promise.all(taskPromises);
+            scheduler.invalidateCache('tasks');
+            actionHistory.recordAction(userId, pending.actionType, { count: tasks.length }, { taskIds: tasks.map(t => t.id) });
+            await ctx.editMessageText(`✅ ${tasks.length} tarefas marcadas como concluídas!`);
+            break;
+
+        case 'complete_tasklist':
+            const listTasks = pending.items;
+            const listPromises = listTasks.map(t =>
+                googleService.completeTask(t.id, pending.data.listId)
+            );
+            await Promise.all(listPromises);
+            scheduler.invalidateCache('tasks');
+            actionHistory.recordAction(userId, pending.actionType, { listName: pending.data.listName, count: listTasks.length }, { taskIds: listTasks.map(t => t.id) });
+            await ctx.editMessageText(`✅ Todas as ${listTasks.length} tarefas da lista "${pending.data.listName}" foram concluídas!`);
+            break;
+
+        default:
+            await ctx.editMessageText('⚠️ Tipo de confirmação não suportado.');
+    }
+}
 
 // ============================================
 // HANDLERS DO TECLADO FIXO
@@ -1201,13 +1369,38 @@ async function processIntent(ctx, intent) {
 
     } else if (intent.tipo === 'list_events') {
         const now = DateTime.now().setZone('America/Sao_Paulo');
-        const end = now.plus({ days: intent.period === 'week' ? 7 : 1 }).endOf('day');
-        const events = await googleService.listEvents(now.startOf('day').toISO(), end.toISO());
+        let start, end, periodLabel;
+
+        // Suporte a target_date para datas específicas (amanhã, sexta, etc.)
+        if (intent.target_date) {
+            const target = DateTime.fromISO(intent.target_date).setZone('America/Sao_Paulo');
+            start = target.startOf('day');
+            if (intent.period === 'week') {
+                end = target.plus({ days: 7 }).endOf('day');
+                periodLabel = `semana a partir de ${target.toFormat('dd/MM')}`;
+            } else {
+                end = target.endOf('day');
+                periodLabel = target.hasSame(now.plus({ days: 1 }), 'day')
+                    ? 'amanhã'
+                    : target.toFormat('dd/MM (cccc)', { locale: 'pt-BR' });
+            }
+        } else {
+            start = now.startOf('day');
+            if (intent.period === 'week') {
+                end = now.plus({ days: 7 }).endOf('day');
+                periodLabel = 'próximos 7 dias';
+            } else {
+                end = now.endOf('day');
+                periodLabel = 'hoje';
+            }
+        }
+
+        const events = await googleService.listEvents(start.toISO(), end.toISO());
 
         if (events.length === 0) {
-            await ctx.reply('📅 Nada agendado.');
+            await ctx.reply(`📅 Nada agendado para ${periodLabel}.`);
         } else {
-            let msg = '📅 *Eventos:*\n\n';
+            let msg = `📅 *Eventos (${periodLabel}):*\n\n`;
             events.forEach(e => {
                 msg += formatEventForDisplay(e) + '\n';
             });
@@ -1535,6 +1728,146 @@ async function processIntent(ctx, intent) {
         scheduler.invalidateCache('tasks');
 
         await ctx.reply(`🗑️ Tarefa "${task.title}" apagada.`);
+
+    } else if (intent.tipo === 'complete_all_tasks') {
+        const groups = await googleService.listTasksGrouped();
+        let tasksToComplete = [];
+
+        if (intent.list_query) {
+            // Completar todas de uma lista específica
+            const targetList = groups.find(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
+            if (!targetList) {
+                return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.`);
+            }
+            tasksToComplete = targetList.tasks.map(t => ({ ...t, taskListId: targetList.id }));
+        } else {
+            // Completar TODAS as tarefas de todas as listas
+            groups.forEach(g => {
+                g.tasks.forEach(t => {
+                    tasksToComplete.push({ ...t, taskListId: g.id });
+                });
+            });
+        }
+
+        if (tasksToComplete.length === 0) {
+            return ctx.reply('✅ Nenhuma tarefa pendente para completar!');
+        }
+
+        // Pede confirmação se for muitas tarefas
+        if (tasksToComplete.length >= 3) {
+            const userId = String(ctx.from.id);
+            const preview = confirmation.formatPreview(tasksToComplete, 'tasks', 5);
+            const conf = confirmation.createConfirmation(
+                userId,
+                'complete_all_tasks',
+                { list_query: intent.list_query },
+                `Completar ${tasksToComplete.length} tarefas`,
+                tasksToComplete
+            );
+
+            const msg = `⚠️ *Confirmar ação*\n\nVou marcar *${tasksToComplete.length} tarefas* como concluídas:\n\n${preview}\n*Deseja continuar?*`;
+            return ctx.reply(msg, {
+                parse_mode: 'Markdown',
+                reply_markup: confirmation.getConfirmationKeyboard(conf.id)
+            });
+        }
+
+        // Se poucas, executa direto
+        const promises = tasksToComplete.map(t => googleService.completeTask(t.id, t.taskListId));
+        await Promise.all(promises);
+        scheduler.invalidateCache('tasks');
+
+        const userId = String(ctx.from.id);
+        actionHistory.recordAction(userId, 'complete_all_tasks', { count: tasksToComplete.length }, { taskIds: tasksToComplete.map(t => t.id) });
+
+        await ctx.reply(`✅ ${tasksToComplete.length} tarefas marcadas como concluídas!`);
+
+    } else if (intent.tipo === 'report') {
+        const now = DateTime.now().setZone('America/Sao_Paulo');
+        const todayStr = now.toFormat('yyyy-MM-dd');
+        let period = intent.period || 'day';
+        let endDate;
+
+        if (period === 'week') {
+            endDate = now.plus({ days: 7 }).endOf('day');
+        } else {
+            endDate = now.endOf('day');
+        }
+
+        // Busca todos os dados
+        const [events, taskGroups, trelloGroups] = await Promise.all([
+            googleService.listEvents(now.startOf('day').toISO(), endDate.toISO()),
+            googleService.listTasksGrouped(),
+            trelloService.listAllCardsGrouped()
+        ]);
+
+        // Flatten tasks
+        const tasks = taskGroups.flatMap(g => g.tasks.map(t => ({ ...t, listName: g.title })));
+
+        // Trello "A Fazer"
+        const todoCards = trelloGroups
+            .filter(g => g.name.toLowerCase().includes('a fazer') || g.name.toLowerCase().includes('to do'))
+            .flatMap(g => g.cards);
+
+        // Tarefas vencendo hoje
+        const tasksWithDeadlineToday = tasks.filter(t => t.due && t.due.startsWith(todayStr));
+
+        const periodLabel = period === 'week' ? 'da semana' : 'de hoje';
+
+        let msg = `📋 *RELATÓRIO ${periodLabel.toUpperCase()}* (${now.toFormat('dd/MM')})\n\n`;
+
+        // ESTATÍSTICAS
+        msg += `📊 *Resumo:*\n`;
+        msg += `   • ${events.length} eventos\n`;
+        msg += `   • ${tasks.length} tarefas pendentes\n`;
+        msg += `   • ${todoCards.length} cards no Trello\n\n`;
+
+        // ALERTAS
+        if (tasksWithDeadlineToday.length > 0) {
+            msg += `⚠️ *VENCENDO HOJE:*\n`;
+            tasksWithDeadlineToday.forEach(t => {
+                msg += `   🔴 ${t.title}\n`;
+            });
+            msg += '\n';
+        }
+
+        // EVENTOS
+        if (events.length > 0) {
+            msg += `📅 *Eventos:*\n`;
+            events.slice(0, 10).forEach(e => {
+                msg += formatEventForDisplay(e) + '\n';
+            });
+            if (events.length > 10) msg += `   _...e mais ${events.length - 10} eventos_\n`;
+            msg += '\n';
+        } else {
+            msg += `📅 _Nenhum evento ${periodLabel}_\n\n`;
+        }
+
+        // TAREFAS
+        if (tasks.length > 0) {
+            msg += `✅ *Tarefas:*\n`;
+            tasks.slice(0, 10).forEach(t => {
+                const prefix = t.listName ? `[${t.listName}] ` : '';
+                msg += `   ▫️ ${prefix}${t.title}\n`;
+            });
+            if (tasks.length > 10) msg += `   _...e mais ${tasks.length - 10} tarefas_\n`;
+            msg += '\n';
+        } else {
+            msg += `✅ _Nenhuma tarefa pendente_\n\n`;
+        }
+
+        // TRELLO
+        if (todoCards.length > 0) {
+            msg += `🗂️ *Trello (A Fazer):*\n`;
+            todoCards.slice(0, 10).forEach(c => {
+                msg += `   📌 [${c.name}](${c.shortUrl})\n`;
+            });
+            if (todoCards.length > 10) msg += `   _...e mais ${todoCards.length - 10} cards_\n`;
+        } else {
+            msg += `🗂️ _Nenhum card pendente_\n`;
+        }
+
+        await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
         // ============================================
         // TRELLO

@@ -235,7 +235,8 @@ AÇÕES:
   - `priority` (string, opcional): "high", "medium"
 
 - `list_events`: Listar eventos
-  - `period`: "day", "week", ou "month"
+  - `period`: "day", "week", ou "month" (relativo à data alvo)
+  - `target_date` (YYYY-MM-DD, opcional): Data específica. Use para "amanhã", "sexta", "dia 15", etc.
 
 - `update_event`: Atualizar evento
   - `query` (string): Texto para buscar o evento (seja ESPECÍFICO)
@@ -275,6 +276,10 @@ AÇÕES BÁSICAS:
 
 - `complete_task`: Marcar como feita
   - `query` (string): Texto para buscar
+
+- `complete_all_tasks`: Marcar TODAS as tarefas como feitas
+  - `list_query` (string, opcional): Nome da lista específica (se vazio, marca TODAS)
+  - Usar quando: "marcar todas as tarefas como feitas", "concluir todas"
 
 - `delete_task`: Apagar tarefa
   - `query` (string): Texto para buscar
@@ -407,6 +412,14 @@ AÇÕES:
   - `key` (string): Chave da informação
 
 ========================
+📋 TIPO: RELATÓRIO
+========================
+
+- `report`: Gerar relatório unificado (eventos + tarefas + trello)
+  - `period` (string, opcional): "day" (hoje), "week" (semana)
+  - Usar quando: "mande um relatório", "resumo do dia", "o que tenho pendente?"
+
+========================
 💬 TIPO: CHAT
 ========================
 
@@ -442,6 +455,22 @@ Se não conseguir gerar um JSON válido, retorne:
 ========================
 📝 EXEMPLOS
 ========================
+
+--- LISTAR EVENTOS ---
+User: "o que tenho para amanhã?"
+{ "tipo": "list_events", "period": "day", "target_date": "{{TOMORROW}}" }
+
+User: "minha agenda de amanhã"
+{ "tipo": "list_events", "period": "day", "target_date": "{{TOMORROW}}" }
+
+User: "eventos de sexta"
+{ "tipo": "list_events", "period": "day", "target_date": "{{NEXT_FRIDAY}}" }
+
+User: "o que tenho hoje?"
+{ "tipo": "list_events", "period": "day" }
+
+User: "agenda da semana"
+{ "tipo": "list_events", "period": "week" }
 
 --- CRIAR EVENTO ---
 User: "Reunião com cliente amanhã às 14h"
@@ -481,6 +510,29 @@ User: "Revisar documento até sexta"
 
 User: "URGENTE enviar contrato hoje"
 { "tipo": "create_task", "title": "Enviar contrato", "due": "{{CURRENT_DATE}}", "priority": "high" }
+
+--- COMPLETAR TAREFAS ---
+User: "marque todas as tarefas como concluídas"
+{ "tipo": "complete_all_tasks" }
+
+User: "concluir todas as do escritório"
+{ "tipo": "complete_all_tasks", "list_query": "Escritório" }
+
+User: "fiz todas as tarefas"
+{ "tipo": "complete_all_tasks" }
+
+--- RELATÓRIO ---
+User: "mande um relatório"
+{ "tipo": "report", "period": "day" }
+
+User: "resumo do dia"
+{ "tipo": "report", "period": "day" }
+
+User: "o que tenho pendente?"
+{ "tipo": "report", "period": "day" }
+
+User: "relatório da semana"
+{ "tipo": "report", "period": "week" }
 
 User: "Criar lista de compras"
 { "tipo": "create_tasklist", "title": "Compras" }
