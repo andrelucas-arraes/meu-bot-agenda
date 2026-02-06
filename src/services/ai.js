@@ -38,7 +38,7 @@ function saveHistory() {
 
 const MAX_HISTORY_LENGTH = 10;
 
-function getSystemPrompt() {
+function getSystemPrompt(userContext = '') {
     let promptTemplate = fs.readFileSync(PROMPT_PATH, 'utf-8');
     const now = DateTime.now().setZone('America/Sao_Paulo');
     const tomorrow = now.plus({ days: 1 });
@@ -53,6 +53,7 @@ function getSystemPrompt() {
     };
 
     return promptTemplate
+        .replace(/{{USER_CONTEXT}}/g, userContext)
         .replace(/{{CURRENT_DATE}}/g, now.toFormat('yyyy-MM-dd'))
         .replace(/{{CURRENT_WEEKDAY}}/g, now.setLocale('pt-BR').toFormat('cccc'))
         .replace(/{{CURRENT_TIME}}/g, now.toFormat('HH:mm'))
@@ -67,11 +68,11 @@ function getSystemPrompt() {
         .replace(/{{NEXT_SUNDAY}}/g, getNextWeekday(7));
 }
 
-async function interpretMessage(text, userId) {
+async function interpretMessage(text, userId, userContext = '') {
     const startTime = Date.now();
 
     try {
-        const promptSystem = getSystemPrompt();
+        const promptSystem = getSystemPrompt(userContext);
 
         // Initialize history if new user
         if (!userSessions[userId]) {

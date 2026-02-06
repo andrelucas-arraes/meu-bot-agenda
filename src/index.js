@@ -22,6 +22,21 @@ bot.use(session());
 scheduler.initScheduler(bot);
 
 // ============================================
+// PERFIS DE USUÁRIO
+// ============================================
+const USER_PROFILES = {
+    '1308852555': { name: 'Lazaro Dias', role: 'Colaborador', company: 'Gomes Empreendimentos' },
+    '1405476881': { name: 'Wilfred Gomes', role: 'Dono', company: 'Gomes Empreendimentos' },
+    '146495410': { name: 'Andre Lucas', role: 'Desenvolvedor', company: 'Tech Lead' }
+};
+
+function getUserContext(userId) {
+    const profile = USER_PROFILES[userId];
+    if (!profile) return '';
+    return `USUÁRIO ATUAL:\nNOME: ${profile.name}\nFUNÇÃO: ${profile.role}\nEMPRESA: ${profile.company}`;
+}
+
+// ============================================
 // MIDDLEWARE: Autenticação
 // ============================================
 bot.use(async (ctx, next) => {
@@ -1033,7 +1048,7 @@ bot.on('text', async (ctx) => {
                 }
 
                 // Usa a IA para interpretar a nova data
-                const interpretation = await interpretMessage(`alterar horário para ${text}`, userId);
+                const interpretation = await interpretMessage(`alterar horário para ${text}`, userId, getUserContext(userId));
                 const intent = Array.isArray(interpretation) ? interpretation[0] : interpretation;
 
                 if (intent.start) {
@@ -1071,7 +1086,7 @@ bot.on('text', async (ctx) => {
         log.bot('Mensagem recebida', { userId, text: text.substring(0, 50) });
 
         await ctx.sendChatAction('typing');
-        const intentResult = await interpretMessage(text, userId);
+        const intentResult = await interpretMessage(text, userId, getUserContext(userId));
 
         log.bot('Intenção detectada', {
             userId,
