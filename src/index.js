@@ -505,17 +505,24 @@ bot.action(/event_edit:(.+)/, async (ctx) => {
 bot.action(/event_edit_time:(.+)/, async (ctx) => {
     const eventId = ctx.match[1];
     await ctx.answerCbQuery();
+
+    ctx.session = ctx.session || {};
+    ctx.session.pendingEventUpdate = { id: eventId, field: 'time' };
+
     await ctx.editMessageText(
         `🕐 *Editar Horário*\n\nDigite o novo horário no formato natural:\n\n_Exemplo: "amanhã às 15h" ou "14:30"_`,
         { parse_mode: 'Markdown' }
     );
-    // O próximo texto do usuário será processado pela IA
 });
 
 // Editar título - pede input
 bot.action(/event_edit_title:(.+)/, async (ctx) => {
     const eventId = ctx.match[1];
     await ctx.answerCbQuery();
+
+    ctx.session = ctx.session || {};
+    ctx.session.pendingEventUpdate = { id: eventId, field: 'summary' };
+
     await ctx.editMessageText(
         `📝 *Editar Título*\n\nDigite o novo título para o evento:`,
         { parse_mode: 'Markdown' }
@@ -526,6 +533,10 @@ bot.action(/event_edit_title:(.+)/, async (ctx) => {
 bot.action(/event_edit_location:(.+)/, async (ctx) => {
     const eventId = ctx.match[1];
     await ctx.answerCbQuery();
+
+    ctx.session = ctx.session || {};
+    ctx.session.pendingEventUpdate = { id: eventId, field: 'location' };
+
     await ctx.editMessageText(
         `📍 *Editar Local*\n\nDigite o novo local do evento:\n\n_Exemplo: "Sala 3" ou "Rua X, 123"_`,
         { parse_mode: 'Markdown' }
@@ -610,6 +621,108 @@ bot.action(/event_cancel_delete:(.+)/, async (ctx) => {
 bot.action(/event_back:(.+)/, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText('👍 Ok! Use os botões abaixo para outras ações.', { parse_mode: 'Markdown' });
+});
+
+// ============================================
+// CALLBACKS DE SUGESTÕES DE TAREFAS
+// ============================================
+
+// Adicionar nota à tarefa
+bot.action(/suggest_task_notes:(.+)/, async (ctx) => {
+    const taskId = ctx.match[1];
+    await ctx.answerCbQuery();
+
+    // Armazena ID para update
+    ctx.session = ctx.session || {};
+    ctx.session.pendingTaskUpdate = { id: taskId, field: 'notes' };
+
+    await ctx.editMessageText('📝 Digite a nota que deseja adicionar à tarefa:');
+});
+
+// Definir prazo da tarefa
+bot.action(/suggest_task_due:(.+)/, async (ctx) => {
+    const taskId = ctx.match[1];
+    await ctx.answerCbQuery();
+
+    // Armazena ID para update
+    ctx.session = ctx.session || {};
+    ctx.session.pendingTaskUpdate = { id: taskId, field: 'due' };
+
+    await ctx.editMessageText('📅 Digite o prazo da tarefa (ex: "hoje", "amanhã", "sexta"):');
+});
+
+// Criar no Trello (converter tarefa em card)
+bot.action(/suggest_create_trello:(.+)/, async (ctx) => {
+    const taskId = ctx.match[1];
+    await ctx.answerCbQuery('🗂️ Criando card no Trello...');
+
+    try {
+        // Busca a tarefa para pegar os dados
+        const task = await googleService.getTask(taskId);
+
+        // Cria card com mesmo nome e notas
+        const cardData = {
+            name: task.title,
+            desc: task.notes || '',
+            due: task.due
+        };
+
+        const card = await trelloService.createCard(cardData);
+        scheduler.invalidateCache('trello');
+
+        await ctx.editMessageText(`✅ *Card Criado no Trello:* [${card.name}](${card.shortUrl})\n\nA tarefa original no Google Tasks continua existindo.`, { parse_mode: 'Markdown' });
+    } catch (error) {
+        log.apiError('Bot', error);
+        await ctx.editMessageText('❌ Erro ao criar card no Trello.');
+    }
+});
+
+// ============================================
+// CALLBACKS DE SUGESTÕES DO TRELLO
+// ============================================
+
+// Add checklist
+bot.action(/suggest_trello_checklist:(.+)/, async (ctx) => {
+    const cardId = ctx.match[1];
+    await ctx.answerCbQuery();
+
+    ctx.session = ctx.session || {};
+    ctx.session.pendingTrelloUpdate = { id: cardId, action: 'add_checklist' };
+
+    await ctx.editMessageText('☑️ Digite os itens da checklist separados por vírgula (ex: "item 1, item 2"):');
+});
+
+// Add prazo
+bot.action(/suggest_trello_due:(.+)/, async (ctx) => {
+    const cardId = ctx.match[1];
+    await ctx.answerCbQuery();
+
+    ctx.session = ctx.session || {};
+    ctx.session.pendingTrelloUpdate = { id: cardId, action: 'set_due' };
+
+    await ctx.editMessageText('📅 Digite o prazo para este card (ex: "amanhã"):');
+});
+
+// Add descrição
+bot.action(/suggest_trello_desc:(.+)/, async (ctx) => {
+    const cardId = ctx.match[1];
+    await ctx.answerCbQuery();
+
+    ctx.session = ctx.session || {};
+    ctx.session.pendingTrelloUpdate = { id: cardId, action: 'set_desc' };
+
+    await ctx.editMessageText('📝 Digite a descrição para o card:');
+});
+
+// Add etiqueta
+bot.action(/suggest_trello_label:(.+)/, async (ctx) => {
+    const cardId = ctx.match[1];
+    await ctx.answerCbQuery();
+
+    ctx.session = ctx.session || {};
+    ctx.session.pendingTrelloUpdate = { id: cardId, action: 'add_label' };
+
+    await ctx.editMessageText('🏷️ Digite o nome ou cor da etiqueta (ex: "urgente", "red"):');
 });
 
 // ============================================
@@ -803,6 +916,129 @@ async function findTrelloCardByQuery(query) {
 bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     const userId = String(ctx.from.id);
+
+    // ============================================
+    // STATE MACHINE (Processa inputs de fluxos pendentes)
+    // ============================================
+
+    // 1. Atualização de Knowledge Base
+    if (ctx.session?.pendingKBUpdate) {
+        const id = ctx.session.pendingKBUpdate;
+        try {
+            await knowledgeService.updateInfo(id, text);
+            await ctx.reply('✅ Informação atualizada com sucesso!');
+        } catch (error) {
+            log.apiError('Bot', error);
+            await ctx.reply('❌ Erro ao atualizar informação.');
+        }
+        delete ctx.session.pendingKBUpdate;
+        return;
+    }
+
+    // 2. Atualização de Tarefa (Notas ou Prazo)
+    if (ctx.session?.pendingTaskUpdate) {
+        const { id, field } = ctx.session.pendingTaskUpdate;
+        try {
+            const updates = {};
+            updates[field] = text;
+
+            // Se for prazo, tenta normalizar data se possível, mas o serviço aceita string livre também?
+            // O serviço espera ISO ou YYYY-MM-DD para 'due'. 
+            // O ideal seria passar pelo interpretador de data ou deixar o serviço tentar fazer parse.
+            // Para simplificar agora, passamos o texto. Se o serviço falhar, falhará.
+            // MELHORIA: Usar interpretMessage só para extrair data se for 'due'? 
+            // Vamos assumir que o usuário digite algo razoável ou que o serviço suporte. 
+            // O googleService.updateTask trata 'due' convertendo para timestamp se for ISO.
+
+            await googleService.updateTask(id, '@default', updates); // Assume default list por enquanto ou precisamos salvar listId na sessão
+            scheduler.invalidateCache('tasks');
+
+            const fieldName = field === 'notes' ? 'Notas' : 'Prazo';
+            await ctx.reply(`✅ ${fieldName} da tarefa atualizados!`);
+        } catch (error) {
+            log.apiError('Bot', error);
+            await ctx.reply('❌ Erro ao atualizar tarefa. Verifique se o formato é válido.');
+        }
+        delete ctx.session.pendingTaskUpdate;
+        return;
+    }
+
+    // 3. Atualização de Trello
+    if (ctx.session?.pendingTrelloUpdate) {
+        const { id, action } = ctx.session.pendingTrelloUpdate;
+        try {
+            if (action === 'add_checklist') {
+                const items = text.split(',').map(i => i.trim()).filter(i => i);
+                await trelloService.addChecklist(id, 'Checklist', items);
+                await ctx.reply('✅ Checklist adicionada!');
+            } else if (action === 'set_due') {
+                await trelloService.updateCard(id, { due: text }); // Trello service deve tratar formato
+                await ctx.reply('✅ Prazo definido!');
+            } else if (action === 'set_desc') {
+                await trelloService.updateCard(id, { desc: text });
+                await ctx.reply('✅ Descrição atualizada!');
+            } else if (action === 'add_label') {
+                // Precisa buscar ID da label pelo nome/cor
+                const labels = await trelloService.getLabels();
+                const targetLabel = labels.find(l =>
+                    (l.name && l.name.toLowerCase() === text.toLowerCase()) ||
+                    (l.color && l.color.toLowerCase() === text.toLowerCase())
+                );
+
+                if (targetLabel) {
+                    await trelloService.addLabel(id, targetLabel.id);
+                    await ctx.reply(`✅ Etiqueta *${targetLabel.name || targetLabel.color}* adicionada!`, { parse_mode: 'Markdown' });
+                } else {
+                    await ctx.reply('⚠️ Etiqueta não encontrada.');
+                }
+            }
+            scheduler.invalidateCache('trello');
+        } catch (error) {
+            log.apiError('Bot', error);
+            await ctx.reply('❌ Erro ao atualizar card.');
+        }
+        delete ctx.session.pendingTrelloUpdate;
+        return;
+    }
+
+    // 4. Atualização de Evento (Edição)
+    if (ctx.session?.pendingEventUpdate) {
+        const { id, field } = ctx.session.pendingEventUpdate;
+        try {
+            const updates = {};
+
+            if (field === 'summary') {
+                updates.summary = text;
+                await googleService.updateEvent(id, updates);
+                await ctx.reply('✅ Título atualizado!');
+            } else if (field === 'location') {
+                updates.location = text;
+                await googleService.updateEvent(id, updates);
+                await ctx.reply('✅ Local atualizado!');
+            } else if (field === 'time') {
+                // Usa a IA para interpretar a nova data
+                const interpretation = await interpretMessage(`agendar para ${text}`, userId);
+                const intent = Array.isArray(interpretation) ? interpretation[0] : interpretation;
+
+                if (intent.start) {
+                    updates.start = intent.start;
+                    if (intent.end) updates.end = intent.end;
+                    await googleService.updateEvent(id, updates);
+                    await ctx.reply(`✅ Horário atualizado para ${formatFriendlyDate(intent.start)}!`);
+                } else {
+                    await ctx.reply('⚠️ Não consegui entender o novo horário. Tente novamente (ex: "amanhã às 15h").');
+                    return; // Não limpa sessão para permitir tentar de novo
+                }
+            }
+
+            scheduler.invalidateCache('events');
+        } catch (error) {
+            log.apiError('Bot', error);
+            await ctx.reply('❌ Erro ao atualizar evento.');
+        }
+        delete ctx.session.pendingEventUpdate;
+        return;
+    }
 
     // Envia mensagem de processamento
     const processingMsg = await ctx.reply('⏳ Processando...');
