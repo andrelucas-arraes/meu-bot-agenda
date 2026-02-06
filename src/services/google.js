@@ -311,6 +311,138 @@ async function createTask(taskData, taskListId = '@default') {
     }, 'createTask');
 }
 
+async function listTasks(taskListId = '@default') {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        const response = await service.tasks.list({
+            tasklist: taskListId,
+            showCompleted: false,
+            showHidden: false
+        });
+
+        log.google('Tarefas listadas', { count: response.data.items?.length || 0, taskListId });
+        return response.data.items || [];
+    }, 'listTasks');
+}
+
+async function listTasksGrouped() {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        const taskListsResponse = await service.tasklists.list();
+        const taskLists = taskListsResponse.data.items || [];
+        const groupedTasks = [];
+
+        for (const list of taskLists) {
+            const tasksResponse = await service.tasks.list({
+                tasklist: list.id,
+                showCompleted: false,
+                showHidden: false
+            });
+
+            if (tasksResponse.data.items && tasksResponse.data.items.length > 0) {
+                groupedTasks.push({
+                    title: list.title,
+                    id: list.id,
+                    tasks: tasksResponse.data.items
+                });
+            }
+        }
+
+        log.google('Tarefas agrupadas listadas', { listCount: groupedTasks.length });
+        return groupedTasks;
+    }, 'listTasksGrouped');
+}
+
+async function updateTask(taskId, taskListId = '@default', updates) {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        const task = await service.tasks.get({
+            tasklist: taskListId,
+            task: taskId
+        });
+
+        const resource = {
+            ...task.data,
+            ...updates
+        };
+        delete resource.id;
+        delete resource.etag;
+        delete resource.updated;
+        delete resource.selfLink;
+        delete resource.position;
+        if (!updates.status) delete resource.status;
+
+        if (updates.due) {
+            if (updates.due.includes('T')) {
+                resource.due = updates.due.endsWith('Z') ? updates.due : updates.due + 'Z';
+            } else {
+                resource.due = updates.due + 'T00:00:00.000Z';
+            }
+        }
+
+        log.google('Atualizando tarefa', { taskId });
+
+        const response = await service.tasks.update({
+            tasklist: taskListId,
+            task: taskId,
+            resource: resource
+        });
+
+        log.google('Tarefa atualizada', { id: response.data.id });
+        return response.data;
+    }, 'updateTask');
+}
+
+async function completeTask(taskId, taskListId = '@default') {
+    return updateTask(taskId, taskListId, { status: 'completed' });
+}
+
+async function deleteTask(taskId, taskListId = '@default') {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const service = google.tasks({ version: 'v1', auth });
+
+        log.google('Deletando tarefa', { taskId });
+
+        await service.tasks.delete({
+            tasklist: taskListId,
+            task: taskId
+        });
+
+        log.google('Tarefa deletada', { taskId });
+    }, 'deleteTask');
+}
+
+function generateAuthUrl() {
+    const oAuth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/oauth2callback'
+    );
+
+    return oAuth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: SCOPES,
+    });
+}
+
+async function getTokenFromCode(code) {
+    const oAuth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/oauth2callback'
+    );
+
+    const { tokens } = await oAuth2Client.getToken(code);
+    return tokens;
+}
+
 module.exports = {
     createEvent,
     listEvents,
