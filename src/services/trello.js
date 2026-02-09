@@ -10,7 +10,7 @@ let rateLimitStats = {
 
 // Wrapper para interceptar headers de rate limit
 async function fetchTrello(url, options) {
-    const response = await fetchTrello(url, options);
+    const response = await fetch(url, options);
 
     // Captura headers se existirem
     const limit = response.headers.get('x-ratelimit-limit');
