@@ -113,18 +113,16 @@ async function listAllCards() {
         const lists = await getLists();
         let allCards = [];
 
-        const promises = lists.map(async (list) => {
+        // Sequential execution to avoid hitting rate limits
+        for (const list of lists) {
             try {
                 const cards = await listCards(list.id);
-                return cards.map(c => ({ ...c, listName: list.name }));
+                const cardsWithList = cards.map(c => ({ ...c, listName: list.name }));
+                allCards = allCards.concat(cardsWithList);
             } catch (e) {
                 log.error(`Erro ao buscar cards da lista ${list.name}`, { error: e.message });
-                return [];
             }
-        });
-
-        const results = await Promise.all(promises);
-        results.forEach(cards => allCards = allCards.concat(cards));
+        }
 
         log.trello('Todos os cards listados', { count: allCards.length });
         return allCards;

@@ -227,6 +227,13 @@ const deleteInfoSchema = z.object({
     key: z.string().min(1, 'Chave da informação é obrigatória'),
 });
 
+// Schema para Relatórios
+const reportSchema = z.object({
+    tipo: z.literal('report'),
+    period: z.enum(['day', 'week', 'month']).optional().default('day'),
+    target_date: z.string().optional()
+});
+
 // Mapeamento de tipo para schema
 const schemaMap = {
     'create_event': eventSchema,
@@ -272,6 +279,7 @@ const schemaMap = {
     'query_info': queryInfoSchema,
     'list_info': listInfoSchema,
     'delete_info': deleteInfoSchema,
+    'report': reportSchema,
 };
 
 /**

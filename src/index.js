@@ -1980,6 +1980,17 @@ async function processIntent(ctx, intent) {
             }
         }
 
+
+
+        // Validação de data (Trello exige ISO 8601)
+        if (intentData.due) {
+            const dueTime = DateTime.fromISO(intentData.due, { zone: 'America/Sao_Paulo' });
+            if (!dueTime.isValid) {
+                log.warn('Data Trello inválida (create), ignorando data', { due: intentData.due });
+                delete intentData.due;
+            }
+        }
+
         const card = await trelloService.createCard(intentData);
 
         if (intent.checklist && Array.isArray(intent.checklist)) {
@@ -2075,7 +2086,17 @@ async function processIntent(ctx, intent) {
         const card = await findTrelloCardByQuery(intent.query);
         if (!card) return ctx.reply('⚠️ Card não encontrado.');
 
-        await trelloService.updateCard(card.id, intent);
+        const updateData = { ...intent };
+        // Validação de data
+        if (updateData.due) {
+            const dueTime = DateTime.fromISO(updateData.due, { zone: 'America/Sao_Paulo' });
+            if (!dueTime.isValid) {
+                log.warn('Data Trello inválida (update), ignorando data', { due: updateData.due });
+                delete updateData.due;
+            }
+        }
+
+        await trelloService.updateCard(card.id, updateData);
         scheduler.invalidateCache('trello');
 
         await ctx.reply(`✅ Card "${card.name}" atualizado.`);
