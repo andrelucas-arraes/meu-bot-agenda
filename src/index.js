@@ -1227,7 +1227,30 @@ async function findTaskByQuery(query) {
 
 async function findTrelloCardByQuery(query) {
     const cards = await trelloService.listAllCards();
-    let card = findTrelloCardFuzzy(cards, query);
+    let card = null;
+
+    // 1. Tenta buscar por número (ex: "02", "item 02", "card 10")
+    // Regex captura apenas o número final
+    const numberMatch = query.match(/^(?:item|card|tarefa|n[º°])?\s*0*(\d+)$/i);
+
+    if (numberMatch) {
+        const num = numberMatch[1];
+        const paddedNum = num.padStart(2, '0'); // ex: "2" -> "02"
+
+        // Procura por "02. Título" ou "2. Título"
+        card = cards.find(c =>
+            c.name.startsWith(`${paddedNum}.`) ||
+            c.name.startsWith(`${num}.`)
+        );
+
+        if (card) {
+            log.bot('Card encontrado por número', { query, found: card.name });
+            return card;
+        }
+    }
+
+    // 2. Busca Fuzzy normal (pelo nome)
+    card = findTrelloCardFuzzy(cards, query);
 
     if (!card) {
         // Fallback: Busca na API (fluxo para encontrar cards arquivados)
@@ -2078,6 +2101,7 @@ async function processIntent(ctx, intent) {
         // ============================================
     } else if (intent.tipo === 'trello_create' || intent.tipo === 'trello') {
         const intentData = { ...intent };
+        let targetListId = process.env.TRELLO_LIST_ID_INBOX;
 
         // Busca lista específica se solicitada
         if (intent.list_query) {
@@ -2085,10 +2109,42 @@ async function processIntent(ctx, intent) {
             const targetList = findTrelloListFuzzy(groups, intent.list_query);
             if (targetList) {
                 intentData.idList = targetList.id;
+                targetListId = targetList.id;
                 log.bot('Usando lista Trello especificada', { listName: targetList.name });
             } else {
                 await ctx.reply(`⚠️ Lista Trello "${intent.list_query}" não encontrada. Criando na Inbox.`);
             }
+        }
+
+        // AUTO-NUMBERING: Adiciona prefixo numérico (ex: "01. ")
+        try {
+            if (targetListId) {
+                const existingCards = await trelloService.listCards(targetListId);
+                let maxNum = 0;
+
+                existingCards.forEach(c => {
+                    const match = c.name.match(/^(\d+)\./);
+                    if (match) {
+                        const num = parseInt(match[1], 10);
+                        if (!isNaN(num) && num > maxNum) {
+                            maxNum = num;
+                        }
+                    }
+                });
+
+                const nextNum = maxNum + 1;
+                const prefix = String(nextNum).padStart(2, '0') + '. ';
+
+                // Garante que temos um nome e evita duplicar prefixo
+                if (!intentData.name && intentData.title) intentData.name = intentData.title; // Fallback comum
+
+                if (intentData.name && !intentData.name.match(/^(\d+)\./)) {
+                    intentData.name = prefix + intentData.name;
+                }
+            }
+        } catch (error) {
+            log.error('Erro ao calcular numeração automática do card', error);
+            // Segue sem numeração em caso de erro
         }
 
 

@@ -641,6 +641,18 @@ User: "Guarda que o wifi é 1234 e agenda reunião amanhã às 14h"
   { "tipo": "create_event", "summary": "Reunião", "start": "{{TOMORROW}}T14:00:00", "end": "{{TOMORROW}}T15:00:00" }
 ]
 
+--- LISTA DE COMANDOS (BATCH) ---
+User: "
+- Criar card Relatório na lista A Fazer
+- Mover card 02 para Feito
+- Arquivar card 05
+"
+[
+  { "tipo": "trello_create", "name": "Relatório", "list_query": "A Fazer" },
+  { "tipo": "trello_move", "query": "02", "list": "Feito" },
+  { "tipo": "trello_archive", "query": "05" }
+]
+
 --- ATUALIZAÇÃO ---
 User: "Muda a reunião com João para 16h"
 { "tipo": "update_event", "query": "reunião João", "start": "{{TODAY}}T16:00:00", "end": "{{TODAY}}T17:00:00" }
