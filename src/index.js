@@ -1214,7 +1214,20 @@ async function findTaskByQuery(query) {
 
 async function findTrelloCardByQuery(query) {
     const cards = await trelloService.listAllCards();
-    return findTrelloCardFuzzy(cards, query);
+    let card = findTrelloCardFuzzy(cards, query);
+
+    if (!card) {
+        // Fallback: Busca na API (fluxo para encontrar cards arquivados)
+        try {
+            const searchResults = await trelloService.searchCards(query);
+            if (searchResults && searchResults.length > 0) {
+                card = searchResults[0];
+            }
+        } catch (e) {
+            log.error('Erro no fallback de busca Trello', e);
+        }
+    }
+    return card;
 }
 
 // ============================================
@@ -2221,10 +2234,20 @@ async function processIntent(ctx, intent) {
             return ctx.reply(`⚠️ Lista "${intent.list}" não encontrada.\n📋 Listas disponíveis: ${listNames}`);
         }
 
-        await trelloService.updateCard(card.id, { idList: targetList.id });
+        const updateData = { idList: targetList.id };
+        if (card.closed) {
+            updateData.closed = false;
+        }
+
+        await trelloService.updateCard(card.id, updateData);
         scheduler.invalidateCache('trello');
 
-        await ctx.reply(`✅ Card "${card.name}" movido para *${targetList.name}*!`, { parse_mode: 'Markdown' });
+        let msg = `✅ Card "${card.name}" movido para *${targetList.name}*!`;
+        if (card.closed) {
+            msg += ` (Restaurado do arquivo)`;
+        }
+
+        await ctx.reply(msg, { parse_mode: 'Markdown' });
 
     } else if (intent.tipo === 'trello_add_label') {
         const card = await findTrelloCardByQuery(intent.query);

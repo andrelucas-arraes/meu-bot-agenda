@@ -11,6 +11,15 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 const PROMPT_PATH = path.join(__dirname, '../prompts/classifier.txt');
 
+// --- Usage Statistics ---
+const usageStats = {
+    totalTokens: 0,
+    promptTokens: 0,
+    candidateTokens: 0,
+    totalRequests: 0,
+    lastRequestTokens: 0
+};
+
 // --- Simple In-Memory Session Storage (with Persistence) ---
 let userSessions = {};
 
@@ -106,6 +115,22 @@ async function interpretMessage(text, userId, userContext = '') {
 
         const result = await chat.sendMessage(text);
         const responseText = result.response.text();
+
+        // Track usage
+        if (result.response.usageMetadata) {
+            const usage = result.response.usageMetadata;
+            usageStats.totalTokens += usage.totalTokenCount || 0;
+            usageStats.promptTokens += usage.promptTokenCount || 0;
+            usageStats.candidateTokens += usage.candidatesTokenCount || 0;
+            usageStats.totalRequests++;
+            usageStats.lastRequestTokens = usage.totalTokenCount || 0;
+
+            log.ai('Uso de Tokens', {
+                prompt: usage.promptTokenCount,
+                candidates: usage.candidatesTokenCount,
+                total: usage.totalTokenCount
+            });
+        }
         const elapsedMs = Date.now() - startTime;
 
         log.ai('Resposta recebida', {
@@ -204,6 +229,7 @@ module.exports = {
     interpretMessage,
     getStatus: () => ({
         model: "gemini-2.5-flash",
-        online: true
+        online: true,
+        usage: usageStats
     })
 };
