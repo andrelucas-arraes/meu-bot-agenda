@@ -1439,6 +1439,36 @@ bot.on('text', async (ctx) => {
             forcedDate = nowSP.plus({ days: 1 }).toFormat('yyyy-MM-dd');
         } else if (lowText.includes('depois de amanhã')) {
             forcedDate = nowSP.plus({ days: 2 }).toFormat('yyyy-MM-dd');
+        } else {
+            // Fallback para dias da semana
+            const weekDaysMap = {
+                'segunda': 1, 'segunda-feira': 1,
+                'terça': 2, 'terça-feira': 2, 'terca': 2,
+                'quarta': 3, 'quarta-feira': 3,
+                'quinta': 4, 'quinta-feira': 4,
+                'sexta': 5, 'sexta-feira': 5,
+                'sábado': 6, 'sabado': 6,
+                'domingo': 7
+            };
+
+            for (const [dayName, dayNum] of Object.entries(weekDaysMap)) {
+                if (lowText.includes(dayName)) {
+                    let target = nowSP;
+                    // Encontra a próxima ocorrência do dia (incluindo hoje)
+                    // Se hoje for terça (2) e pedirem terça, retorna hoje.
+                    while (target.weekday !== dayNum) {
+                        target = target.plus({ days: 1 });
+                    }
+
+                    // Se disser "próxima", garante que seja semana que vem se for hoje
+                    if ((lowText.includes('próxima') || lowText.includes('proxima')) && target.hasSame(nowSP, 'day')) {
+                        target = target.plus({ days: 7 });
+                    }
+
+                    forcedDate = target.toFormat('yyyy-MM-dd');
+                    break;
+                }
+            }
         }
 
         if (forcedDate) {

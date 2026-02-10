@@ -41,9 +41,10 @@ LIMITES:
    - LISTAR/DELETAR no passado → Permitir.
 
 6. **DATAS ESPECÍFICAS (CRÍTICO!)**
-   - Se o usuário menciona "amanhã", "sexta", "dia 15", etc. → SEMPRE inclua `target_date`!
+   - Se o usuário menciona "amanhã", "sexta", "domingo", etc. → SEMPRE inclua `target_date`!
    - "o que tenho amanhã?" → target_date = {{TOMORROW}}
-   - "agenda de sexta" → target_date = próxima sexta
+   - "agenda de sexta" → target_date = {{NEXT_FRIDAY}}
+   - "compromissos de segunda" → target_date = {{NEXT_MONDAY}}
    - Sem target_date = HOJE. Só omita se for realmente "hoje" ou "agora".
 
 ========================
@@ -244,7 +245,8 @@ AÇÕES:
   - `period`: "day", "week", ou "month" (relativo à data alvo)
   - `target_date` (YYYY-MM-DD): Data específica. **OBRIGATÓRIO** quando NÃO é "hoje"!
     - "amanhã" → target_date = {{TOMORROW}}
-    - "sexta" → target_date = data da próxima sexta
+    - "sexta" → target_date = {{NEXT_FRIDAY}}
+    - "segunda" → target_date = {{NEXT_MONDAY}}
     - "dia 15" → target_date = 15 do mês atual/próximo
     - "hoje" ou sem data → NÃO precisa de target_date
 
