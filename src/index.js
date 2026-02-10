@@ -1561,7 +1561,7 @@ async function processIntent(ctx, intent) {
 
         // Suporte a target_date para datas específicas (amanhã, sexta, etc.)
         if (intent.target_date) {
-            const target = DateTime.fromISO(intent.target_date).setZone('America/Sao_Paulo');
+            const target = DateTime.fromISO(intent.target_date, { zone: 'America/Sao_Paulo' });
             start = target.startOf('day');
             if (intent.period === 'week') {
                 end = target.plus({ days: 7 }).endOf('day');
@@ -1631,7 +1631,7 @@ async function processIntent(ctx, intent) {
             periodLabel = 'esta semana';
         } else {
             // Trata como data específica
-            const target = DateTime.fromISO(intent.period).setZone('America/Sao_Paulo');
+            const target = DateTime.fromISO(intent.period, { zone: 'America/Sao_Paulo' });
             start = target.startOf('day').toISO();
             end = target.endOf('day').toISO();
             periodLabel = target.toFormat('dd/MM');
@@ -1985,7 +1985,7 @@ async function processIntent(ctx, intent) {
     } else if (intent.tipo === 'report') {
         const now = DateTime.now().setZone('America/Sao_Paulo');
         // Se a IA detectou uma data específica (ex: amanhã), usa ela. Senão usa hoje.
-        const referenceDate = intent.target_date ? DateTime.fromISO(intent.target_date).setZone('America/Sao_Paulo') : now;
+        const referenceDate = intent.target_date ? DateTime.fromISO(intent.target_date, { zone: 'America/Sao_Paulo' }) : now;
 
         let period = intent.period || 'day';
         let startDate = referenceDate.startOf('day');
