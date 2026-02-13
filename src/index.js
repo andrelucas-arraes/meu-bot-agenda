@@ -2135,7 +2135,7 @@ async function processIntent(ctx, intent) {
         // FALLBACK: Tenta extrair status da descrição (Prioridade sobre o que a IA inferiu)
         if (intentData.desc) {
             // Match: "Status: Value", "Status : Value", "### Status\nValue"
-            const statusMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Status\s*(?::|(?:\s*-\s*)?|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            const statusMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?Status(?:\*\*|__)?\s*(?::|(?:\s*-\s*)?|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
 
             if (statusMatch) {
                 const extractedStatus = statusMatch[1].trim();
@@ -2152,11 +2152,11 @@ async function processIntent(ctx, intent) {
             const extraLabels = [];
 
             // Tipo de caso
-            const tipoMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Tipo de caso\s*(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            const tipoMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?Tipo de caso(?:\*\*|__)?\s*(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
             if (tipoMatch) extraLabels.push(tipoMatch[1].trim());
 
             // Prioridade
-            const prioMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Prioridade\s*(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            const prioMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?Prioridade(?:\*\*|__)?\s*(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
             if (prioMatch) extraLabels.push(prioMatch[1].trim());
 
             if (extraLabels.length > 0) {
@@ -2175,6 +2175,27 @@ async function processIntent(ctx, intent) {
 
                 intentData.label_query = currentLabels;
                 log.bot('Fallback: Labels mescladas da descrição', { labels: currentLabels });
+            }
+        }
+
+        // FORÇA PRIORIDADE COMO LABEL (Se não for keyword padrão e ainda não estiver nas labels)
+        if (intentData.priority) {
+            const prio = intentData.priority;
+            // Ignora keywords que já têm tratamento especial ou não devem virar label textualmente
+            const ignore = ['high', 'medium', 'low', 'urgent', 'normal', 'urgente'];
+
+            if (!ignore.includes(prio.toLowerCase())) {
+                let currentLabels = [];
+                if (intentData.label_query) {
+                    currentLabels = Array.isArray(intentData.label_query) ? intentData.label_query : [intentData.label_query];
+                }
+
+                // Adiciona se não existir (case insensitive check)
+                if (!currentLabels.some(l => l.toLowerCase() === prio.toLowerCase())) {
+                    currentLabels.push(prio); // Usa o valor original (casing)
+                    intentData.label_query = currentLabels;
+                    log.bot('Label inferida de Prioridade (custom)', { label: prio });
+                }
             }
         }
 
@@ -2306,7 +2327,7 @@ async function processIntent(ctx, intent) {
 
         // FALLBACK Checklist: Extrair "Pendência atual"
         if (intentData.desc) {
-            const pendenciaMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Pendência atual(?::|(?:\r?\n)+)(?:\s*-\s*)?((?:.|\n)*?)(?=(?:\n(?:###|Cliente|Tipo de caso|Observações|Prioridade|Status)|$))/i);
+            const pendenciaMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?Pendência atual(?:\*\*|__)?(?::|(?:\r?\n)+)(?:\s*-\s*)?((?:.|\n)*?)(?=(?:\n(?:###|(?:\*\*|__)?(?:Cliente|Tipo de caso|Observações|Prioridade|Status)(?:\*\*|__)?)|$))/i);
 
             if (pendenciaMatch) {
                 const pendenciaText = pendenciaMatch[1].trim();
@@ -2323,8 +2344,8 @@ async function processIntent(ctx, intent) {
             }
 
             // FALLBACK Title: Formatar como "Cliente - Tipo de Caso"
-            const clienteMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Cliente(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
-            const tipoMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Tipo de caso(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            const clienteMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?Cliente(?:\*\*|__)?(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            const tipoMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?Tipo de caso(?:\*\*|__)?(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
 
             if (clienteMatch && tipoMatch) {
                 intentData.name = `${clienteMatch[1].trim()} - ${tipoMatch[1].trim()}`;
@@ -2333,7 +2354,7 @@ async function processIntent(ctx, intent) {
 
             // LIMPEZA DA DESCRIÇÃO: Manter apenas Observações
             // Tenta extrair apenas o bloco de observações
-            const obsMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Observações(?::|(?:\r?\n)+)(?:\s*-\s*)?((?:.|\n)*?)(?=(?:\n(?:###|Cliente|Tipo de caso|Pendência atual|Prioridade|Status)|$))/i);
+            const obsMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?Observações(?:\*\*|__)?(?::|(?:\r?\n)+)(?:\s*-\s*)?((?:.|\n)*?)(?=(?:\n(?:###|(?:\*\*|__)?(?:Cliente|Tipo de caso|Pendência atual|Prioridade|Status)(?:\*\*|__)?)|$))/i);
 
             if (obsMatch) {
                 // Se encontrou observações, usa apenas elas como descrição
@@ -2343,7 +2364,7 @@ async function processIntent(ctx, intent) {
                 // Se não encontrou observações explícitas, tenta limpar os outros campos conhecidos para não duplicar
                 // Remove linhas que começam com campos conhecidos
                 let cleanedDesc = intentData.desc
-                    .replace(/(?:^|\n)(?:###\s*)?(Cliente|Tipo de caso|Pendência atual|Prioridade|Status)(?::|(?:\r?\n)+)(?:.*)(?=\n|$)/gi, '')
+                    .replace(/(?:^|\n)(?:###\s*)?(?:\*\*|__)?(Cliente|Tipo de caso|Pendência atual|Prioridade|Status)(?:\*\*|__)?(?::|(?:\r?\n)+)(?:.*)(?=\n|$)/gi, '')
                     .trim();
 
                 intentData.desc = cleanedDesc;
