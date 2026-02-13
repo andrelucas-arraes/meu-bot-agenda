@@ -2132,13 +2132,18 @@ async function processIntent(ctx, intent) {
     } else if (intent.tipo === 'trello_create' || intent.tipo === 'trello') {
         const intentData = { ...intent };
 
-        // FALLBACK: Tenta extrair status e labels da descrição se não vieram na intent
-        if (!intentData.list_query && intentData.desc) {
+        // FALLBACK: Tenta extrair status da descrição (Prioridade sobre o que a IA inferiu)
+        if (intentData.desc) {
             // Match: "Status: Value", "### Status\nValue", "### Status\n- Value", etc.
             const statusMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Status(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+
             if (statusMatch) {
-                intentData.list_query = statusMatch[1].trim();
-                log.bot('Fallback: Status extraído da descrição', { list: intentData.list_query });
+                const extractedStatus = statusMatch[1].trim();
+                // Override apenas se encontrou algo válido
+                if (extractedStatus) {
+                    intentData.list_query = extractedStatus;
+                    log.bot('Fallback: Status extraído da descrição (Override)', { list: intentData.list_query });
+                }
             }
         }
 
