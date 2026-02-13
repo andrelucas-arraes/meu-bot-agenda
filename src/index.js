@@ -2178,11 +2178,22 @@ async function processIntent(ctx, intent) {
         // Busca lista específica se solicitada
         if (intentData.list_query) {
             const groups = await trelloService.listAllCardsGrouped();
-            const targetList = findTrelloListFuzzy(groups, intentData.list_query);
+
+            // 1. Tenta busca fuzzy primeiro (já existente)
+            let targetList = findTrelloListFuzzy(groups, intentData.list_query);
+
+            // 2. Fallback: Busca "contains" normalizado (ex: "Parado" encontra "Lista Parado" ou "Parados")
+            if (!targetList) {
+                const normalize = str => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                const queryNorm = normalize(intentData.list_query);
+
+                targetList = groups.find(g => normalize(g.name).includes(queryNorm));
+            }
+
             if (targetList) {
                 intentData.idList = targetList.id;
                 targetListId = targetList.id;
-                log.bot('Usando lista Trello especificada', { listName: targetList.name });
+                log.bot('Usando lista Trello especificada', { listName: targetList.name, query: intentData.list_query });
             } else {
                 await ctx.reply(`⚠️ Lista Trello "${intentData.list_query}" não encontrada. Criando na Inbox.`);
             }
@@ -2243,14 +2254,18 @@ async function processIntent(ctx, intent) {
                     const query = rawQuery.trim();
                     if (!query) continue;
 
+                    // Normalização para busca: remove acentos e espaços extras
+                    const normalize = str => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                    const normalizedQuery = normalize(query);
+
                     let targetLabel = boardLabels.find(l =>
-                        l.name && l.name.toLowerCase() === query.toLowerCase()
+                        l.name && normalize(l.name) === normalizedQuery
                     );
 
                     if (!targetLabel) {
                         try {
                             log.bot('Criando nova label no Trello', { name: query });
-                            targetLabel = await trelloService.createLabel(query, 'sky'); // Cor padrão: Sky (Azul claro)
+                            targetLabel = await trelloService.createLabel(query, 'sky');
                         } catch (err) {
                             log.error('Erro ao criar label automática', { query, error: err.message });
                         }
