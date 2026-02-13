@@ -2134,8 +2134,8 @@ async function processIntent(ctx, intent) {
 
         // FALLBACK: Tenta extrair status da descrição (Prioridade sobre o que a IA inferiu)
         if (intentData.desc) {
-            // Match: "Status: Value", "### Status\nValue", "### Status\n- Value", "Status - Value"
-            const statusMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Status(?::|(?:\s*-\s*)?|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            // Match: "Status: Value", "Status : Value", "### Status\nValue"
+            const statusMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Status\s*(?::|(?:\s*-\s*)?|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
 
             if (statusMatch) {
                 const extractedStatus = statusMatch[1].trim();
@@ -2152,11 +2152,11 @@ async function processIntent(ctx, intent) {
             const extraLabels = [];
 
             // Tipo de caso
-            const tipoMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Tipo de caso(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            const tipoMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Tipo de caso\s*(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
             if (tipoMatch) extraLabels.push(tipoMatch[1].trim());
 
             // Prioridade
-            const prioMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Prioridade(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
+            const prioMatch = intentData.desc.match(/(?:^|\n)(?:###\s*)?Prioridade\s*(?::|(?:\r?\n)+)(?:\s*-\s*)?([^\r\n]+)/i);
             if (prioMatch) extraLabels.push(prioMatch[1].trim());
 
             if (extraLabels.length > 0) {
@@ -2183,6 +2183,9 @@ async function processIntent(ctx, intent) {
         // Busca lista específica se solicitada
         if (intentData.list_query) {
             const groups = await trelloService.listAllCardsGrouped();
+
+            // Log para debug
+            log.bot('Buscando lista Trello', { query: intentData.list_query, availableLists: groups.map(g => g.name) });
 
             // 1. Tenta busca fuzzy primeiro (já existente)
             let targetList = findTrelloListFuzzy(groups, intentData.list_query);
