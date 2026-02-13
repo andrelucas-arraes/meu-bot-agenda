@@ -2188,24 +2188,53 @@ async function processIntent(ctx, intent) {
             }
         }
 
+        // --- RESOLUÇÃO DE LABELS (Tipo de caso, etc.) ---
+        try {
+            const boardLabels = await trelloService.getLabels();
+            let labelsToAdd = [];
+
+            // 1. Label solicitada explicitamente (label_query) - Suporta string ou array
+            if (intent.label_query) {
+                const queries = Array.isArray(intent.label_query) ? intent.label_query : [intent.label_query];
+
+                for (const query of queries) {
+                    const targetLabel = boardLabels.find(l =>
+                        l.name && l.name.toLowerCase() === query.toLowerCase()
+                    );
+
+                    if (targetLabel) {
+                        if (!labelsToAdd.includes(targetLabel.id)) {
+                            labelsToAdd.push(targetLabel.id);
+                            log.bot('Label encontrada', { query, label: targetLabel.name });
+                        }
+                    } else {
+                        log.warn('Label solicitada não encontrada', { query });
+                    }
+                }
+            }
+
+            // 2. Prioridade Alta (Label Vermelha)
+            if (intent.priority === 'high') {
+                const redLabel = boardLabels.find(l => l.color === 'red');
+                if (redLabel && !labelsToAdd.includes(redLabel.id)) {
+                    labelsToAdd.push(redLabel.id);
+                }
+            }
+
+            if (labelsToAdd.length > 0) {
+                intentData.labels = labelsToAdd.join(',');
+            }
+        } catch (error) {
+            log.error('Erro ao resolver labels na criação', error);
+        }
+
         const card = await trelloService.createCard(intentData);
 
         if (intent.checklist && Array.isArray(intent.checklist)) {
             await trelloService.addChecklist(card.id, 'Checklist', intent.checklist);
         }
 
-        // Se tem prioridade alta, adiciona etiqueta vermelha
-        if (intent.priority === 'high') {
-            try {
-                const labels = await trelloService.getLabels();
-                const redLabel = labels.find(l => l.color === 'red');
-                if (redLabel) {
-                    await trelloService.addLabel(card.id, redLabel.id);
-                }
-            } catch (e) {
-                // Ignora erro de etiqueta
-            }
-        }
+
 
         scheduler.invalidateCache('trello');
 

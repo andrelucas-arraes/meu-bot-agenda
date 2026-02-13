@@ -47,6 +47,15 @@ LIMITES:
    - "compromissos de segunda" → target_date = {{NEXT_MONDAY}}
    - Sem target_date = HOJE. Só omita se for realmente "hoje" ou "agora".
 
+7. **FORMATAÇÃO AUTOMÁTICA (TRELLO)**
+   - Ao receber campos com múltiplos itens (ex: "Pendência atual: a; b; c" ou "Pendências: x, y, z"),
+   - VOCÊ DEVE TRANSFORMAR EM LISTA MARKDOWN:
+     ### Pendência atual
+     - Item a;
+     - Item b;
+     - Item c.
+   - Sempre use `###` para destacar os títulos das seções (Cliente, Status, Observações).
+
 ========================
 📅 INTERPRETAÇÃO DE DATAS E HORÁRIOS
 ========================
@@ -613,6 +622,33 @@ User: "Remove o item 2 da checklist do card Bug"
 
 User: "Tira a etiqueta urgente do card X"
 { "tipo": "trello_remove_label", "query": "X", "label": "urgente" }
+
+User: "
+Cliente: Ana Rejane Jacó
+Tipo de caso: Imóveis
+Pendência atual: Verificar se a cliente fará o registro dos imóveis
+Prioridade: Rotina
+Status: Parado
+"
+{ 
+  "tipo": "trello_create", 
+  "name": "Ana Rejane Jacó - Imóveis", 
+  "desc": "Cliente: Ana Rejane Jacó\nTipo de caso: Imóveis\nPendência atual: Verificar se a cliente fará o registro dos imóveis\nPrioridade: Rotina", 
+  "list_query": "Parado" 
+}
+
+User: "
+Tipo de caso: Inventário
+Pendência atual: Peças técnicas...
+Status: Em andamento
+"
+{ 
+  "tipo": "trello_create", 
+  "name": "Inventário - Pendências", 
+  "desc": "### Pendência atual\n- Peça técnica do imóvel;\n- Documentos pessoais;\n- Certidões civis.\n\n### Observações\n- Gilberto Basílio (inventariante).", 
+  "label_query": ["Inventário", "Em andamento"],
+  "list_query": "Em andamento"
+}
 
 --- MEMÓRIA ---
 User: "Guarda aí: a senha do wifi da mãe é 1234"
