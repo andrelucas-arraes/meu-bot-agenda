@@ -22,10 +22,6 @@ const UNDOABLE_ACTIONS = {
     'complete_event': 'uncomplete_event',
     'complete_all_events': 'uncomplete_events',
     'delete_event': 'restore_event', // Não é possível restaurar, mas registramos
-    'create_task': 'delete_task',
-    'complete_task': 'uncomplete_task',
-    'complete_all_tasks': 'uncomplete_tasks',
-    'delete_task': 'restore_task',
     'trello_create': 'trello_delete',
     'trello_archive': 'trello_unarchive',
     'trello_move': 'trello_move_back',

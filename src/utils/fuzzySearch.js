@@ -81,39 +81,6 @@ function findEventFuzzy(events, query) {
 }
 
 /**
- * Busca uma tarefa por query fuzzy
- * @param {Array} tasks - Lista de tarefas
- * @param {string} query - Termo de busca
- * @returns {Object|null} - Melhor match ou null
- */
-function findTaskFuzzy(tasks, query) {
-    if (!tasks || tasks.length === 0 || !query) {
-        return null;
-    }
-
-    const fuse = createFuzzySearcher(tasks, ['title', 'notes'], {
-        threshold: 0.3,
-        minMatchCharLength: 3
-    });
-
-    const results = fuse.search(query);
-
-    if (results.length === 0) {
-        return null;
-    }
-
-    const best = results[0];
-
-    // Se match muito ruim, retorna null
-    if (best.score > 0.5) {
-        log.warn('Match fuzzy tarefa com score ruim', { query, match: best.item.title, score: best.score });
-        return null;
-    }
-
-    return best.item;
-}
-
-/**
  * Busca um card do Trello por query fuzzy
  * @param {Array} cards - Lista de cards
  * @param {string} query - Termo de busca
@@ -198,7 +165,6 @@ function findMultiple(items, query, keys, limit = 5) {
 module.exports = {
     createFuzzySearcher,
     findEventFuzzy,
-    findTaskFuzzy,
     findTrelloCardFuzzy,
     findTrelloListFuzzy,
     findMultiple

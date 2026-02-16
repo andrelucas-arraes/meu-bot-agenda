@@ -39,8 +39,7 @@ module.exports = {
     // ===========================================
     batch: {
         defaultBatchSize: 10,     // Items por batch
-        defaultDelayMs: 1000,     // Delay entre batches (1 segundo)
-        googleTasksLimit: 100     // Estimativa do limite Google Tasks API/min
+        defaultDelayMs: 1000      // Delay entre batches (1 segundo)
     },
 
     // ===========================================
@@ -72,7 +71,7 @@ module.exports = {
         afternoonCheckHour: 14,   // Hora do check da tarde
         reminderMinutes: 15,      // Minutos antes do evento para lembrete
         maxEventsInSummary: 10,   // Máximo de eventos no resumo
-        maxTasksInSummary: 10,    // Máximo de tarefas no resumo
+
         maxCardsInSummary: 10     // Máximo de cards Trello no resumo
     },
 

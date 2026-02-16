@@ -24,7 +24,6 @@ const CACHE_FILE = path.join(DATA_DIR, 'scheduler_cache.json');
 // Cache em memória
 let memoryCache = {
     events: [],
-    tasks: [],
     trelloCards: [],
     lastUpdate: null
 };
@@ -74,7 +73,6 @@ function loadCacheFromDisk() {
 
             log.scheduler('Cache carregado do disco', {
                 events: memoryCache.events.length,
-                tasks: memoryCache.tasks.length,
                 cards: memoryCache.trelloCards.length
             });
 
@@ -102,24 +100,16 @@ async function refreshDataCache() {
         const end = now.plus({ hours: 12 });
         const events = await googleService.listEvents(now.toISO(), end.toISO());
 
-        // 2. Tarefas (de todas as listas)
-        const taskGroups = await googleService.listTasksGrouped();
-        const tasks = taskGroups.flatMap(group =>
-            group.tasks.map(t => ({ ...t, listName: group.title }))
-        );
-
-        // 3. Trello
+        // 2. Trello
         const trelloCards = await trelloService.listAllCards();
 
-        // 4. Salva
+        // 3. Salva
         memoryCache.events = events;
-        memoryCache.tasks = tasks;
         memoryCache.trelloCards = trelloCards;
         memoryCache.lastUpdate = now.toISO();
 
         log.scheduler('Dados atualizados', {
             events: events.length,
-            tasks: tasks.length,
             cards: trelloCards.length
         });
 
@@ -140,13 +130,6 @@ async function invalidateCache(type = 'all') {
         if (type === 'all' || type === 'events') {
             const end = now.plus({ hours: 12 });
             memoryCache.events = await googleService.listEvents(now.toISO(), end.toISO());
-        }
-
-        if (type === 'all' || type === 'tasks') {
-            const taskGroups = await googleService.listTasksGrouped();
-            memoryCache.tasks = taskGroups.flatMap(group =>
-                group.tasks.map(t => ({ ...t, listName: group.title }))
-            );
         }
 
         if (type === 'all' || type === 'trello') {
@@ -174,8 +157,8 @@ function initScheduler(bot) {
     // 1. Tenta carregar do disco primeiro
     loadCacheFromDisk();
 
-    // 2. Se vazio ou sem tarefas, busca agora
-    if (memoryCache.events.length === 0 && memoryCache.tasks.length === 0) {
+    // 2. Se vazio, busca agora
+    if (memoryCache.events.length === 0) {
         refreshDataCache();
     }
 
@@ -205,39 +188,29 @@ function initScheduler(bot) {
         // Eventos não concluídos
         const pendingEvents = todaysEvents.filter(e => !e.summary.startsWith('✅'));
 
-        // Tarefas com prazo hoje
-        const tasksWithDeadlineToday = memoryCache.tasks.filter(t => {
-            if (!t.due) return false;
-            return t.due.startsWith(todayStr);
+        // Tarefas pendentes (todos os cards exceto os em listas de conclusão)
+        const todoCards = memoryCache.trelloCards.filter(c => {
+            if (!c.listName) return false;
+            const listName = c.listName.toLowerCase();
+            const isCompleted =
+                listName.includes('concluido') ||
+                listName.includes('concluído') ||
+                listName.includes('feito') ||
+                listName.includes('done') ||
+                listName.includes('finalizado') ||
+                listName.includes('arquivado') ||
+                listName.includes('concluído');
+            return !isCompleted;
         });
-
-        // Trello "A Fazer"
-        const todoCards = memoryCache.trelloCards.filter(c =>
-            c.listName && (
-                c.listName.toLowerCase().includes('a fazer') ||
-                c.listName.toLowerCase().includes('to do') ||
-                c.listName.toLowerCase().includes('todo')
-            )
-        );
 
         let msg = `☀️ *Bom dia! Resumo de hoje (${now.toFormat('dd/MM')}):*\n\n`;
 
         // ESTATÍSTICAS RÁPIDAS
         msg += `📊 *Resumo:*\n`;
         msg += `   • ${pendingEvents.length} eventos pendentes\n`;
-        msg += `   • ${memoryCache.tasks.length} tarefas pendentes\n`;
         msg += `   • ${todoCards.length} cards no Trello\n\n`;
 
-        // ALERTAS DE PRAZO
-        if (tasksWithDeadlineToday.length > 0) {
-            msg += `⚠️ *VENCENDO HOJE:*\n`;
-            tasksWithDeadlineToday.forEach(t => {
-                msg += `   🔴 ${t.title}\n`;
-            });
-            msg += '\n';
-        }
-
-        if (todaysEvents.length === 0 && memoryCache.tasks.length === 0 && todoCards.length === 0) {
+        if (todaysEvents.length === 0 && todoCards.length === 0) {
             msg += '🎉 Nada pendente. Você está livre!';
         } else {
             if (todaysEvents.length > 0) {
@@ -247,16 +220,6 @@ function initScheduler(bot) {
                     const time = formatFriendlyDate(e.start.dateTime || e.start.date, { relative: false });
                     msg += `   ${emoji} ${time} - ${e.summary}\n`;
                 });
-                msg += '\n';
-            }
-
-            if (memoryCache.tasks.length > 0) {
-                msg += `📝 *Pendências (Google Tasks):*\n`;
-                memoryCache.tasks.slice(0, 10).forEach(t => {
-                    const prefix = t.listName ? `[${t.listName}] ` : '';
-                    msg += `   ▫️ ${prefix}${t.title}\n`;
-                });
-                if (memoryCache.tasks.length > 10) msg += `   ...e mais ${memoryCache.tasks.length - 10} tarefas.\n`;
                 msg += '\n';
             }
 
@@ -295,7 +258,6 @@ function initScheduler(bot) {
         await refreshDataCache();
 
         const now = DateTime.now().setZone('America/Sao_Paulo');
-        const tasks = memoryCache.tasks;
 
         // Eventos Restantes Hoje
         // Eventos Restantes Hoje
@@ -310,14 +272,19 @@ function initScheduler(bot) {
             return false;
         });
 
-        // Trello "A Fazer"
-        const todoCards = memoryCache.trelloCards.filter(c =>
-            c.listName && (
-                c.listName.toLowerCase().includes('a fazer') ||
-                c.listName.toLowerCase().includes('to do') ||
-                c.listName.toLowerCase().includes('todo')
-            )
-        );
+        // Trello Pendentes
+        const todoCards = memoryCache.trelloCards.filter(c => {
+            if (!c.listName) return false;
+            const listName = c.listName.toLowerCase();
+            const isCompleted =
+                listName.includes('concluido') ||
+                listName.includes('concluído') ||
+                listName.includes('feito') ||
+                listName.includes('done') ||
+                listName.includes('finalizado') ||
+                listName.includes('arquivado');
+            return !isCompleted;
+        });
 
         let msg = `🕑 *Check das 14h:*\n\n`;
 
@@ -332,18 +299,7 @@ function initScheduler(bot) {
             msg += '\n';
         }
 
-        // 2. Tarefas
-        if (tasks.length > 0) {
-            msg += `📝 *Pendências (${tasks.length}):*\n`;
-            tasks.slice(0, 5).forEach(t => {
-                const prefix = t.listName ? `[${t.listName}] ` : '';
-                msg += `   ▫️ ${prefix}${t.title || t.name}\n`;
-            });
-            if (tasks.length > 5) msg += `   ...e mais ${tasks.length - 5}.\n`;
-            msg += '\n';
-        }
-
-        // 3. Trello
+        // 2. Trello
         if (todoCards.length > 0) {
             msg += `🗂️ *Trello A Fazer (${todoCards.length}):*\n`;
             todoCards.slice(0, 5).forEach(c => {
@@ -353,7 +309,7 @@ function initScheduler(bot) {
             msg += '\n';
         }
 
-        if (remainingEvents.length === 0 && tasks.length === 0 && todoCards.length === 0) {
+        if (remainingEvents.length === 0 && todoCards.length === 0) {
             msg += '✅ Tudo limpo por enquanto!\n\n';
         }
 

@@ -12,8 +12,8 @@ const { log, runWithContext } = require('./utils/logger');
 const { rateLimiter } = require('./utils/rateLimiter');
 const crypto = require('crypto');
 const { formatFriendlyDate, getEventStatusEmoji, formatEventForDisplay } = require('./utils/dateFormatter');
-const { findEventFuzzy, findTaskFuzzy, findTrelloCardFuzzy, findTrelloListFuzzy } = require('./utils/fuzzySearch');
-const { getEventSuggestions, getTaskSuggestions, getTrelloSuggestions, getConflictButtons } = require('./utils/suggestions');
+const { findEventFuzzy, findTrelloCardFuzzy, findTrelloListFuzzy } = require('./utils/fuzzySearch');
+const { getEventSuggestions, getTrelloSuggestions, getConflictButtons } = require('./utils/suggestions');
 const actionHistory = require('./utils/actionHistory');
 const confirmation = require('./utils/confirmation');
 const { batchProcess } = require('./utils/batchProcessor');
@@ -108,8 +108,8 @@ bot.use(async (ctx, next) => {
 
 const mainKeyboard = Markup.keyboard([
     ['📅 Agenda de Hoje', '📅 Agenda da Semana'],
-    ['✅ Minhas Tarefas', '🗂️ Meu Trello'],
-    ['🧠 Minha Memória', '🔄 Atualizar Tudo']
+    ['🗂️ Meu Trello', '🧠 Minha Memória'],
+    ['🔄 Atualizar Tudo']
 ]).resize();
 
 // Função helper para enviar com teclado
@@ -123,7 +123,7 @@ function replyWithKeyboard(ctx, message, options = {}) {
 
 bot.start((ctx) => {
     log.bot('Start', { userId: ctx.from.id });
-    replyWithKeyboard(ctx, '👋 Olá! Sou seu Assistente Supremo!\n\nPosso ajudar com:\n📅 Google Calendar\n✅ Google Tasks\n🗂️ Trello\n🧠 Guardar informações\n\nDigite /ajuda para ver exemplos ou use os botões abaixo! 👇');
+    replyWithKeyboard(ctx, '👋 Olá! Sou seu Assistente Supremo!\n\nPosso ajudar com:\n📅 Google Calendar\n🗂️ Trello\n🧠 Guardar informações\n\nDigite /ajuda para ver exemplos ou use os botões abaixo! 👇');
 });
 
 bot.command('api', async (ctx) => {
@@ -212,7 +212,6 @@ Escolha uma categoria abaixo para ver exemplos de comandos:
 
     const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📅 Eventos (Calendar)', 'help_events')],
-        [Markup.button.callback('✅ Tarefas (Tasks)', 'help_tasks')],
         [Markup.button.callback('🗂️ Trello', 'help_trello')],
         [Markup.button.callback('🧠 Memória', 'help_memory')],
         [Markup.button.callback('💡 Dicas Gerais', 'help_tips')]
@@ -247,31 +246,6 @@ bot.action('help_events', (ctx) => {
     `, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Voltar', 'help_back')]]) });
 });
 
-bot.action('help_tasks', (ctx) => {
-    ctx.answerCbQuery();
-    ctx.editMessageText(`
-✅ *Tarefas (Google Tasks)*
-
-*Criar:*
-• "Lembrar de comprar leite"
-• "Revisar documento até sexta"
-• "Subtarefa 'imprimir' na tarefa 'relatório'" ↪️
-
-*Listas:*
-• "Criar lista de compras"
-• "Minhas listas"
-• "Renomear lista X para Y"
-• "Apagar lista X" 🗑️
-
-*Gerenciar:*
-• "Marcar comprar leite como feita"
-• "Mover tarefa X para lista Y"
-• "Limpar tarefas completas da lista Pessoal" 🧹
-
-*Dica:* Tarefas são para coisas sem hora específica.
-Para compromissos com hora, use eventos! 📅
-    `, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Voltar', 'help_back')]]) });
-});
 
 bot.action('help_trello', (ctx) => {
     ctx.answerCbQuery();
@@ -317,7 +291,7 @@ bot.action('help_tips', (ctx) => {
 • "toda segunda às 9h" ✅
 
 *Múltiplas ações:*
-• "Agendar daily às 9h e criar tarefa revisar métricas"
+• "Agendar daily às 9h e criar card no Trello revisar métricas"
 
 *Correções rápidas:*
 • Depois de criar algo, diga "muda para 15h" e eu entendo!
@@ -362,7 +336,6 @@ bot.action('help_back', (ctx) => {
     ctx.answerCbQuery();
     const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📅 Eventos (Calendar)', 'help_events')],
-        [Markup.button.callback('✅ Tarefas (Tasks)', 'help_tasks')],
         [Markup.button.callback('🗂️ Trello', 'help_trello')],
         [Markup.button.callback('🧠 Memória', 'help_memory')],
         [Markup.button.callback('💡 Dicas Gerais', 'help_tips')]
@@ -407,24 +380,6 @@ bot.command('desfazer', async (ctx) => {
                     await googleService.updateEvent(lastAction.result.id, { summary: originalSummary });
                     scheduler.invalidateCache('events');
                     msg = `🔙 Evento "${originalSummary}" desmarcado como concluído.`;
-                    undone = true;
-                }
-                break;
-
-            case 'complete_task':
-                if (lastAction.result?.id) {
-                    await googleService.updateTask(lastAction.result.id, lastAction.result.taskListId || '@default', { status: 'needsAction' });
-                    scheduler.invalidateCache('tasks');
-                    msg = `🔙 Tarefa "${lastAction.data.title || lastAction.result.title}" reaberta.`;
-                    undone = true;
-                }
-                break;
-
-            case 'create_task':
-                if (lastAction.result?.id) {
-                    await googleService.deleteTask(lastAction.result.id, lastAction.result.taskListId || '@default');
-                    scheduler.invalidateCache('tasks');
-                    msg = `🔙 Tarefa "${lastAction.data.title}" foi removida.`;
                     undone = true;
                 }
                 break;
@@ -516,34 +471,6 @@ async function executeConfirmedAction(ctx, pending) {
             await ctx.editMessageText(`✅ ${events.length} eventos marcados como concluídos!`);
             break;
 
-        case 'complete_all_tasks':
-            const tasks = pending.items;
-            // Usa batchProcess para evitar rate limit da API Google Tasks
-            await batchProcess(
-                tasks,
-                t => googleService.completeTask(t.id, t.taskListId || '@default'),
-                10,  // 10 tarefas por batch
-                1000 // 1 segundo de delay entre batches
-            );
-            scheduler.invalidateCache('tasks');
-            actionHistory.recordAction(userId, pending.actionType, { count: tasks.length }, { taskIds: tasks.map(t => t.id) });
-            await ctx.editMessageText(`✅ ${tasks.length} tarefas marcadas como concluídas!`);
-            break;
-
-        case 'complete_tasklist':
-            const listTasks = pending.items;
-            // Usa batchProcess para evitar rate limit
-            await batchProcess(
-                listTasks,
-                t => googleService.completeTask(t.id, pending.data.listId),
-                10,
-                1000
-            );
-            scheduler.invalidateCache('tasks');
-            actionHistory.recordAction(userId, pending.actionType, { listName: pending.data.listName, count: listTasks.length }, { taskIds: listTasks.map(t => t.id) });
-            await ctx.editMessageText(`✅ Todas as ${listTasks.length} tarefas da lista "${pending.data.listName}" foram concluídas!`);
-            break;
-
         default:
             await ctx.editMessageText('⚠️ Tipo de confirmação não suportado.');
     }
@@ -605,44 +532,7 @@ bot.hears('📅 Agenda da Semana', async (ctx) => {
     }
 });
 
-bot.hears('✅ Minhas Tarefas', async (ctx) => {
-    log.bot('Teclado: Minhas Tarefas', { userId: ctx.from.id });
 
-    try {
-        const groups = await googleService.listTasksGrouped();
-
-        if (groups.length === 0) {
-            return replyWithKeyboard(ctx, '✅ *Tarefas*\n\n🎉 Nenhuma tarefa pendente!', { parse_mode: 'Markdown' });
-        }
-
-        let msg = '✅ *Minhas Tarefas*\n\n';
-        let totalTasks = 0;
-
-        groups.forEach(group => {
-            msg += `📁 *${group.title}*\n`;
-            if (group.tasks.length > 0) {
-                group.tasks.forEach(t => {
-                    msg += `   ▫️ ${t.title}`;
-                    if (t.notes) msg += `\n      📝 _${t.notes}_`;
-                    msg += `\n`;
-                    totalTasks++;
-                });
-            } else {
-                msg += `   _(vazia)_\n`;
-            }
-            msg += '\n';
-        });
-
-        if (totalTasks === 0) {
-            return replyWithKeyboard(ctx, '✅ *Tarefas*\n\n🎉 Nenhuma tarefa pendente!', { parse_mode: 'Markdown' });
-        }
-
-        replyWithKeyboard(ctx, msg, { parse_mode: 'Markdown' });
-    } catch (error) {
-        log.apiError('Bot', error);
-        ctx.reply('❌ Erro ao buscar tarefas.');
-    }
-});
 
 bot.hears('🗂️ Meu Trello', async (ctx) => {
     log.bot('Teclado: Meu Trello', { userId: ctx.from.id });
@@ -923,71 +813,7 @@ bot.action(/event_back:(.+)/, async (ctx) => {
 });
 
 // ============================================
-// CALLBACKS DE SUGESTÕES DE TAREFAS
-// ============================================
 
-// Adicionar nota à tarefa
-bot.action(/suggest_task_notes:(.+)/, async (ctx) => {
-    const taskId = ctx.match[1];
-    await ctx.answerCbQuery();
-
-    // Busca tarefa para pegar o listId se possível (ou assume default se não achar)
-    const task = await googleService.getTask(taskId).catch(() => ({}));
-
-    // Armazena ID para update
-    ctx.session = ctx.session || {};
-    ctx.session.pendingTaskUpdate = {
-        id: taskId,
-        field: 'notes',
-        taskListId: task.taskListId || '@default'
-    };
-
-    await ctx.editMessageText('📝 Digite a nota que deseja adicionar à tarefa:');
-});
-
-// Definir prazo da tarefa
-bot.action(/suggest_task_due:(.+)/, async (ctx) => {
-    const taskId = ctx.match[1];
-    await ctx.answerCbQuery();
-
-    const task = await googleService.getTask(taskId).catch(() => ({}));
-
-    // Armazena ID para update
-    ctx.session = ctx.session || {};
-    ctx.session.pendingTaskUpdate = {
-        id: taskId,
-        field: 'due',
-        taskListId: task.taskListId || '@default'
-    };
-
-    await ctx.editMessageText('📅 Digite o prazo da tarefa (ex: "hoje", "amanhã", "sexta"):');
-});
-
-// Criar no Trello (converter tarefa em card)
-bot.action(/suggest_create_trello:(.+)/, async (ctx) => {
-    const taskId = ctx.match[1];
-    await ctx.answerCbQuery('🗂️ Criando card no Trello...');
-
-    try {
-        // Busca a tarefa para pegar os dados
-        const task = await googleService.getTask(taskId);
-
-        // Cria card com mesmo nome e notas
-        const cardData = {
-            name: task.title,
-            desc: task.notes || '',
-            due: task.due
-        };
-
-        const card = await trelloService.createCard(cardData);
-        scheduler.invalidateCache('trello');
-
-        await ctx.editMessageText(`✅ *Card Criado no Trello:* [${card.name}](${card.shortUrl})\n\nA tarefa original no Google Tasks continua existindo.`, { parse_mode: 'Markdown' });
-    } catch (error) {
-        log.apiError('Bot', error);
-        await ctx.editMessageText('❌ Erro ao criar card no Trello.');
-    }
-});
 
 // ============================================
 // CALLBACKS DE SUGESTÕES DO TRELLO
@@ -1211,19 +1037,7 @@ async function findEventByQuery(query, targetDate = null) {
     return findEventFuzzy(events, query);
 }
 
-async function findTaskByQuery(query) {
-    // FIX: Busca em TODAS as listas, não apenas na default
-    const groups = await googleService.listTasksGrouped();
-    let allTasks = [];
 
-    groups.forEach(group => {
-        // Adiciona ID da lista em cada tarefa para saber de onde ela veio
-        const tasksWithListId = group.tasks.map(t => ({ ...t, taskListId: group.id, listTitle: group.title }));
-        allTasks = allTasks.concat(tasksWithListId);
-    });
-
-    return findTaskFuzzy(allTasks, query);
-}
 
 async function findTrelloCardByQuery(query) {
     const cards = await trelloService.listAllCards();
@@ -1292,42 +1106,7 @@ bot.on('text', async (ctx) => {
         return;
     }
 
-    // 2. Atualização de Tarefa (Notas ou Prazo)
-    if (ctx.session?.pendingTaskUpdate) {
-        const { id, field } = ctx.session.pendingTaskUpdate;
-        log.bot('Processando atualização de tarefa pendente', { id, field, text });
 
-        if (!id) {
-            log.bot('Erro: ID da tarefa perdido na sessão');
-            await ctx.reply('❌ Erro: Perdi o contexto da tarefa. Por favor, tente novamente.');
-            delete ctx.session.pendingTaskUpdate;
-            return;
-        }
-
-        try {
-            const updates = {};
-            updates[field] = text;
-
-            // Se for prazo, tenta normalizar data se possível, mas o serviço aceita string livre também?
-            // O serviço espera ISO ou YYYY-MM-DD para 'due'. 
-            // O ideal seria passar pelo interpretador de data ou deixar o serviço tentar fazer parse.
-            // Para simplificar agora, passamos o texto. Se o serviço falhar, falhará.
-            // MELHORIA: Usar interpretMessage só para extrair data se for 'due'? 
-            // Vamos assumir que o usuário digite algo razoável ou que o serviço suporte. 
-            // O googleService.updateTask trata 'due' convertendo para timestamp se for ISO.
-
-            await googleService.updateTask(id, ctx.session.pendingTaskUpdate.taskListId || '@default', updates);
-            scheduler.invalidateCache('tasks');
-
-            const fieldName = field === 'notes' ? 'Notas' : 'Prazo';
-            await ctx.reply(`✅ ${fieldName} da tarefa atualizados!`);
-        } catch (error) {
-            log.apiError('Bot', error, { context: 'pendingTaskUpdate', taskId: id });
-            await ctx.reply('❌ Erro ao atualizar tarefa. Verifique se o formato é válido.');
-        }
-        delete ctx.session.pendingTaskUpdate;
-        return;
-    }
 
     // 3. Atualização de Trello
     if (ctx.session?.pendingTrelloUpdate) {
@@ -1703,314 +1482,7 @@ async function processIntent(ctx, intent) {
 
         await ctx.reply(msg);
 
-        // ============================================
-        // TAREFAS
-        // ============================================
-    } else if (intent.tipo === 'create_task' || intent.tipo === 'tarefa') {
-        const intentData = { ...intent };
-        let targetListId = '@default';
 
-        // 1. Prioridade: Lista especificada (ex: "na lista Simões")
-        if (intent.list_query) {
-            const groups = await googleService.listTasksGrouped();
-            const list = groups.find(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
-            if (list) {
-                targetListId = list.id;
-                log.bot('Usando lista especificada', { listName: list.title });
-            } else {
-                await ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada. Criando na lista padrão.`);
-            }
-        }
-        // 2. Segunda prioridade: Mesma lista da tarefa pai
-        else if (intent.parent_query) {
-            const parentTask = await findTaskByQuery(intent.parent_query);
-            if (parentTask) {
-                intentData.parent = parentTask.id;
-                targetListId = parentTask.taskListId || '@default';
-            } else {
-                await ctx.reply(`⚠️ Não encontrei a tarefa pai "${intent.parent_query}". Criando como tarefa normal.`);
-            }
-        }
-
-        const task = await googleService.createTask(intentData, targetListId);
-        // IMPORTANTE: Adiciona o taskListId no objeto de tarefa para que as sugestões funcionem
-        task.taskListId = targetListId;
-
-        scheduler.invalidateCache('tasks');
-
-        let msg = `✅ *${intentData.parent ? 'Subtarefa' : 'Tarefa'} criada:* ${intent.title || intent.name}`;
-
-        // Mostra prioridade se alta
-        if (intent.priority === 'high') {
-            msg = `🔴 *URGENTE* - ${msg}`;
-        } else if (intent.priority === 'medium') {
-            msg = `🟡 ${msg}`;
-        }
-
-        if (intent.due) {
-            msg += `\n📅 Prazo: ${formatFriendlyDate(intent.due)}`;
-        }
-
-        if (intentData.parent) {
-            const parent = await findTaskByQuery(intent.parent_query); // Redundante mas seguro p/ pegar nome atual
-            msg += `\n↪️ Dentro de: _${parent ? parent.title : 'Tarefa Pai'}_`;
-        }
-
-        await ctx.reply(msg, { parse_mode: 'Markdown' });
-
-        // --- POST-ACTION SUGGESTIONS ---
-        const suggestions = getTaskSuggestions(task, intent);
-        if (suggestions) {
-            await ctx.reply(suggestions.message, { parse_mode: 'Markdown', ...suggestions.keyboard });
-        }
-
-        // ============================================
-        // GOOGLE TASKS - AVANÇADO (Listas e Movimentação)
-        // ============================================
-    } else if (intent.tipo === 'create_tasklist') {
-        const list = await googleService.createTaskList(intent.title);
-        scheduler.invalidateCache('tasks');
-        await ctx.reply(`✅ Lista de tarefas "*${list.title}*" criada com sucesso!`, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'update_tasklist') {
-        // Encontra a lista pelo nome (fuzzy)
-        const groups = await googleService.listTasksGrouped();
-        const targetList = groups.find(g => g.title.toLowerCase().includes(intent.query.toLowerCase()));
-
-        if (!targetList) {
-            return ctx.reply(`⚠️ Lista "${intent.query}" não encontrada.`);
-        }
-
-        await googleService.updateTaskList(targetList.id, intent.title);
-        scheduler.invalidateCache('tasks');
-        await ctx.reply(`✅ Lista renomeada para "*${intent.title}*"`, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'delete_tasklist') {
-        const groups = await googleService.listTasksGrouped();
-        const targetList = groups.find(g => g.title.toLowerCase().includes(intent.query.toLowerCase()));
-
-        if (!targetList) {
-            return ctx.reply(`⚠️ Lista "${intent.query}" não encontrada.`);
-        }
-
-        // Confirmação (segurança) - aqui deleta direto por enquanto ou podemos por confirmação
-        // Como o usuário pediu explicitamente "apaga a lista X", vamos executar
-        await googleService.deleteTaskList(targetList.id);
-        scheduler.invalidateCache('tasks');
-        await ctx.reply(`🗑️ Lista "*${targetList.title}*" apagada.`, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'list_tasklists') {
-        const groups = await googleService.listTasksGrouped();
-        let msg = '📋 *Minhas Listas de Tarefas:*\n\n';
-        groups.forEach(g => {
-            msg += `• *${g.title}* (${g.tasks.length} tarefas)\n`;
-        });
-        await ctx.reply(msg, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'move_task') {
-        const task = await findTaskByQuery(intent.query);
-        if (!task) return ctx.reply(`⚠️ Tarefa "${intent.query}" não encontrada.`);
-
-        let targetListId = task.taskListId;
-        let parentId = null;
-
-        // Se pediu para mudar de lista
-        if (intent.list_query) {
-            const groups = await googleService.listTasksGrouped();
-            const targetList = groups.find(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
-            if (targetList) {
-                targetListId = targetList.id;
-            } else {
-                return ctx.reply(`⚠️ Lista destino "${intent.list_query}" não encontrada.`);
-            }
-        }
-
-        // Se pediu para ser subtarefa (mover para dentro de outra)
-        if (intent.parent_query) {
-            // Busca a tarefa pai (precisa estar na mesma lista destino!)
-            // A API do Google Tasks exige que pai e filho estejam na mesma lista
-
-            // Simulação de busca na lista destino (ou atual se não mudou)
-            // Como meu findTaskFuzzy busca em tudo, preciso filtrar?
-            // Por simplicidade, busco global. Se estiver em lista diferente, aviso.
-            const parentTask = await findTaskByQuery(intent.parent_query);
-
-            if (!parentTask) {
-                return ctx.reply(`⚠️ Tarefa pai "${intent.parent_query}" não encontrada.`);
-            }
-
-            if (parentTask.taskListId !== targetListId) {
-                // Se o usuário não especificou lista, assumimos a lista do pai
-                if (!intent.list_query) {
-                    targetListId = parentTask.taskListId;
-                } else {
-                    return ctx.reply(`⚠️ Erro: Tarefa pai e subtarefa devem ficar na mesma lista.`);
-                }
-            }
-            parentId = parentTask.id;
-        }
-
-        await googleService.moveTask(task.id, targetListId, parentId);
-        scheduler.invalidateCache('tasks');
-
-        let msg = `✅ Tarefa "*${task.title}*" movida!`;
-        if (parentId) msg += ` Agora é subtarefa.`;
-        if (intent.list_query) msg += ` (Nova lista)`;
-
-        await ctx.reply(msg, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'clear_completed_tasks') {
-        const groups = await googleService.listTasksGrouped();
-        const targetList = groups.find(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
-
-        if (!targetList) {
-            return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.`);
-        }
-
-        await googleService.clearCompletedTasks(targetList.id);
-        scheduler.invalidateCache('tasks');
-        await ctx.reply(`🧹 Tarefas concluídas da lista "*${targetList.title}*" foram limpas!`, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'complete_tasklist') {
-        if (!intent.list_query) {
-            return ctx.reply('⚠️ Qual lista você quer concluir? (Ex: "Marcar todas do Escritório")');
-        }
-
-        const groups = await googleService.listTasksGrouped();
-        const targetList = groups.find(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
-
-        if (!targetList) {
-            return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.`);
-        }
-
-        if (targetList.tasks.length === 0) {
-            return ctx.reply(`✅ A lista "*${targetList.title}*" já está vazia!`, { parse_mode: 'Markdown' });
-        }
-
-        await ctx.reply(`⏳ Marcando ${targetList.tasks.length} tarefas como concluídas na lista "${targetList.title}"...`);
-
-        // Processa em batches para evitar rate limit
-        await batchProcess(
-            targetList.tasks,
-            t => googleService.completeTask(t.id, targetList.id),
-            10,
-            1000
-        );
-
-        scheduler.invalidateCache('tasks');
-        await ctx.reply(`✅ Todas as tarefas da lista "*${targetList.title}*" foram concluídas!`, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'list_tasks') {
-        let groups = await googleService.listTasksGrouped();
-        if (groups.length === 0) return ctx.reply('✅ Nenhuma lista de tarefas encontrada.');
-
-        // Filtragem por lista
-        if (intent.list_query) {
-            groups = groups.filter(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
-            if (groups.length === 0) {
-                return ctx.reply(`⚠️ Nenhuma lista encontrada com o nome "${intent.list_query}".`);
-            }
-        }
-
-        let msg = '';
-        groups.forEach(group => {
-            msg += `📁 *${group.title}*\n`;
-            if (group.tasks.length === 0) {
-                msg += `   _(vazia)_\n`;
-            } else {
-                group.tasks.forEach(t => {
-                    msg += `   ▫️ ${t.title}`;
-                    if (t.notes) msg += `\n      📝 _${t.notes}_`;
-                    msg += `\n`;
-                });
-            }
-            msg += '\n';
-        });
-        await ctx.reply(msg, { parse_mode: 'Markdown' });
-
-    } else if (intent.tipo === 'update_task') {
-        const task = await findTaskByQuery(intent.query);
-        if (!task) return ctx.reply('⚠️ Tarefa não encontrada.');
-
-        await googleService.updateTask(task.id, task.taskListId || '@default', intent);
-        scheduler.invalidateCache('tasks');
-
-        await ctx.reply(`✅ Tarefa "${task.title}" atualizada.`);
-
-    } else if (intent.tipo === 'complete_task') {
-        const task = await findTaskByQuery(intent.query);
-        if (!task) return ctx.reply('⚠️ Tarefa não encontrada.');
-
-        await googleService.completeTask(task.id, task.taskListId);
-        scheduler.invalidateCache('tasks');
-
-        await ctx.reply(`✅ Tarefa "${task.title}" concluída!`);
-
-    } else if (intent.tipo === 'delete_task') {
-        const task = await findTaskByQuery(intent.query);
-        if (!task) return ctx.reply('⚠️ Tarefa não encontrada.');
-
-        await googleService.deleteTask(task.id, task.taskListId);
-        scheduler.invalidateCache('tasks');
-
-        await ctx.reply(`🗑️ Tarefa "${task.title}" apagada.`);
-
-    } else if (intent.tipo === 'complete_all_tasks') {
-        const groups = await googleService.listTasksGrouped();
-        let tasksToComplete = [];
-
-        if (intent.list_query) {
-            // Completar todas de uma lista específica
-            const targetList = groups.find(g => g.title.toLowerCase().includes(intent.list_query.toLowerCase()));
-            if (!targetList) {
-                return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.`);
-            }
-            tasksToComplete = targetList.tasks.map(t => ({ ...t, taskListId: targetList.id }));
-        } else {
-            // Completar TODAS as tarefas de todas as listas
-            groups.forEach(g => {
-                g.tasks.forEach(t => {
-                    tasksToComplete.push({ ...t, taskListId: g.id });
-                });
-            });
-        }
-
-        if (tasksToComplete.length === 0) {
-            return ctx.reply('✅ Nenhuma tarefa pendente para completar!');
-        }
-
-        // Pede confirmação se for muitas tarefas
-        if (tasksToComplete.length >= 3) {
-            const userId = String(ctx.from.id);
-            const preview = confirmation.formatPreview(tasksToComplete, 'tasks', 5);
-            const conf = confirmation.createConfirmation(
-                userId,
-                'complete_all_tasks',
-                { list_query: intent.list_query },
-                `Completar ${tasksToComplete.length} tarefas`,
-                tasksToComplete
-            );
-
-            const msg = `⚠️ *Confirmar ação*\n\nVou marcar *${tasksToComplete.length} tarefas* como concluídas:\n\n${preview}\n*Deseja continuar?*`;
-            return ctx.reply(msg, {
-                parse_mode: 'Markdown',
-                reply_markup: confirmation.getConfirmationKeyboard(conf.id)
-            });
-        }
-
-        // Se poucas, executa direto (ainda com batch para futureproofing)
-        await batchProcess(
-            tasksToComplete,
-            t => googleService.completeTask(t.id, t.taskListId),
-            10,
-            1000
-        );
-        scheduler.invalidateCache('tasks');
-
-        const userId = String(ctx.from.id);
-        actionHistory.recordAction(userId, 'complete_all_tasks', { count: tasksToComplete.length }, { taskIds: tasksToComplete.map(t => t.id) });
-
-        await ctx.reply(`✅ ${tasksToComplete.length} tarefas marcadas como concluídas!`);
 
     } else if (intent.tipo === 'report') {
         const now = DateTime.now().setZone('America/Sao_Paulo');
@@ -2032,61 +1504,42 @@ async function processIntent(ctx, intent) {
             : (period === 'week' ? 'esta semana' : 'hoje');
 
         // Busca todos os dados com tratamento de erro individual
-        let events = [], taskGroups = [], trelloGroups = [];
+        let events = [], trelloGroups = [];
 
         try {
             const results = await Promise.allSettled([
                 googleService.listEvents(startDate.toISO(), endDate.toISO()),
-                googleService.listTasksGrouped(),
                 trelloService.listAllCardsGrouped()
             ]);
 
             if (results[0].status === 'fulfilled') events = results[0].value;
             else log.error('Erro ao buscar eventos para o report', { error: results[0].reason?.message });
 
-            if (results[1].status === 'fulfilled') taskGroups = results[1].value;
-            else log.error('Erro ao buscar tarefas para o report', { error: results[1].reason?.message });
-
-            if (results[2].status === 'fulfilled') trelloGroups = results[2].value;
-            else log.error('Erro ao buscar trello para o report', { error: results[2].reason?.message });
+            if (results[1].status === 'fulfilled') trelloGroups = results[1].value;
+            else log.error('Erro ao buscar trello para o report', { error: results[1].reason?.message });
 
         } catch (e) {
             log.error('Erro global no report', { error: e.message });
         }
-
-        // Flatten tasks
-        const tasks = taskGroups.flatMap(g => g.tasks.map(t => ({ ...t, listName: g.title })));
 
         // Trello "A Fazer"
         const todoCards = trelloGroups
             .filter(g => g.name.toLowerCase().includes('a fazer') || g.name.toLowerCase().includes('to do'))
             .flatMap(g => g.cards);
 
-        // Tarefas vencendo na data de referência
-        const targetDateStr = referenceDate.toFormat('yyyy-MM-dd');
-        const tasksWithDeadline = tasks.filter(t => t.due && t.due.startsWith(targetDateStr));
+
 
         let msg = `📋 *RELATÓRIO ${periodLabel.toUpperCase()}* (${referenceDate.toFormat('dd/MM')})\n\n`;
 
         // Se alguma API falhou, avisa no topo
-        if (taskGroups.length === 0 || trelloGroups.length === 0) {
+        if (trelloGroups.length === 0) {
             msg += `⚠️ _Alguns dados podem estar incompletos devido a erro na API._\n\n`;
         }
 
         // ESTATÍSTICAS
         msg += `📊 *Resumo:*\n`;
         msg += `   • ${events.length} eventos\n`;
-        msg += `   • ${tasks.length} tarefas pendentes\n`;
         msg += `   • ${todoCards.length} cards no Trello\n\n`;
-
-        // ALERTAS
-        if (tasksWithDeadline.length > 0) {
-            msg += `⚠️ *VENCENDO ${periodLabel.toUpperCase()}:*\n`;
-            tasksWithDeadline.forEach(t => {
-                msg += `   🔴 ${t.title}\n`;
-            });
-            msg += '\n';
-        }
 
         // EVENTOS
         if (events.length > 0) {
@@ -2100,18 +1553,7 @@ async function processIntent(ctx, intent) {
             msg += `📅 _Nenhum evento ${periodLabel}_\n\n`;
         }
 
-        // TAREFAS
-        if (tasks.length > 0) {
-            msg += `✅ *Tarefas:*\n`;
-            tasks.slice(0, 10).forEach(t => {
-                const prefix = t.listName ? `[${t.listName}] ` : '';
-                msg += `   ▫️ ${prefix}${t.title}\n`;
-            });
-            if (tasks.length > 10) msg += `   _...e mais ${tasks.length - 10} tarefas_\n`;
-            msg += '\n';
-        } else {
-            msg += `✅ _Nenhuma tarefa pendente_\n\n`;
-        }
+
 
         // TRELLO
         if (todoCards.length > 0) {

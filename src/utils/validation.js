@@ -46,68 +46,6 @@ const deleteEventSchema = z.object({
     target_date: z.string().optional(),
 });
 
-// Schema para Tasks
-const taskSchema = z.object({
-    tipo: z.enum(['create_task', 'tarefa']),
-    title: z.string().optional(),
-    name: z.string().optional(),
-    notes: z.string().optional(),
-    due: z.string().optional(),
-}).refine(data => data.title || data.name, {
-    message: 'Título da tarefa é obrigatório (title ou name)'
-});
-
-const listTasksSchema = z.object({
-    tipo: z.literal('list_tasks'),
-});
-
-const updateTaskSchema = z.object({
-    tipo: z.literal('update_task'),
-    query: z.string().min(1, 'Query de busca é obrigatória'),
-    title: z.string().optional(),
-    notes: z.string().optional(),
-    due: z.string().optional(),
-});
-
-const completeDeleteTaskSchema = z.object({
-    tipo: z.enum(['complete_task', 'delete_task']),
-    query: z.string().min(1, 'Query de busca é obrigatória'),
-});
-
-// Novos schemas para Google Tasks Avançado
-const createTaskListSchema = z.object({
-    tipo: z.literal('create_tasklist'),
-    title: z.string().min(1, 'Título da lista é obrigatório'),
-});
-
-const updateTaskListSchema = z.object({
-    tipo: z.literal('update_tasklist'),
-    query: z.string().min(1, 'Query de busca é obrigatória'),
-    title: z.string().min(1, 'Novo título é obrigatório'),
-});
-
-const deleteTaskListSchema = z.object({
-    tipo: z.literal('delete_tasklist'),
-    query: z.string().min(1, 'Query de busca é obrigatória'),
-});
-
-const listTaskListSchema = z.object({
-    tipo: z.literal('list_tasklists')
-});
-
-const taskMoveSchema = z.object({
-    tipo: z.literal('move_task'),
-    query: z.string().min(1, 'Query de busca da tarefa é obrigatória'),
-    parent_query: z.string().optional(), // buscar tarefa pai por texto
-    list_query: z.string().optional(), // buscar lista destino por texto
-    previous_query: z.string().optional() // buscar tarefa anterior por texto
-});
-
-const taskClearSchema = z.object({
-    tipo: z.literal('clear_completed_tasks'),
-    list_query: z.string().min(1, 'Nome da lista é obrigatório'),
-});
-
 // Schema para Trello
 const trelloCreateSchema = z.object({
     tipo: z.enum(['trello_create', 'trello']),
@@ -247,12 +185,6 @@ const schemaMap = {
     'update_event': updateEventSchema,
     'delete_event': deleteEventSchema,
     'complete_event': deleteEventSchema,
-    'create_task': taskSchema,
-    'tarefa': taskSchema,
-    'list_tasks': listTasksSchema,
-    'update_task': updateTaskSchema,
-    'complete_task': completeDeleteTaskSchema,
-    'delete_task': completeDeleteTaskSchema,
     'trello_create': trelloCreateSchema,
     'trello': trelloCreateSchema,
     'trello_list': trelloListSchema,
@@ -270,13 +202,6 @@ const schemaMap = {
     'trello_check_item': trelloCheckItemSchema,
     'trello_delete_check_item': trelloDeleteCheckItemSchema,
     'trello_remove_label': trelloRemoveLabelSchema,
-    // Novos endpoints avançados de Tasks
-    'create_tasklist': createTaskListSchema,
-    'update_tasklist': updateTaskListSchema,
-    'delete_tasklist': deleteTaskListSchema,
-    'list_tasklists': listTaskListSchema,
-    'move_task': taskMoveSchema,
-    'clear_completed_tasks': taskClearSchema,
     'chat': chatSchema,
     'neutro': chatSchema,
     // Knowledge Base (Memória de Longo Prazo)
@@ -383,11 +308,6 @@ function sanitizeAIResponse(response) {
     // Normaliza tipo
     if (sanitized.tipo) {
         sanitized.tipo = sanitized.tipo.toLowerCase().trim();
-    }
-
-    // Garante que title/name existam para tarefas
-    if (sanitized.tipo === 'create_task' || sanitized.tipo === 'tarefa') {
-        sanitized.title = sanitized.title || sanitized.name;
     }
 
     // Garante que summary existe para eventos

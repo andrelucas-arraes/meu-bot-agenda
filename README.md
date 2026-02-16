@@ -5,7 +5,7 @@
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-blue.svg?logo=telegram)](https://t.me/BotFather)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini-orange.svg)](https://ai.google.dev/)
 
-O **Assis** é um assistente pessoal inteligente integrado ao Telegram, projetado para centralizar sua produtividade. Ele combina o poder do **Google Gemini AI** com integrações robustas ao **Google Calendar**, **Google Tasks** e **Trello**, permitindo que você gerencie sua vida diretamente do chat.
+O **Assis** é um assistente pessoal inteligente integrado ao Telegram, projetado para centralizar sua produtividade. Ele combina o poder do **Google Gemini AI** com integrações robustas ao **Google Calendar** e **Trello**, permitindo que você gerencie sua vida diretamente do chat.
 
 ---
 
@@ -13,7 +13,7 @@ O **Assis** é um assistente pessoal inteligente integrado ao Telegram, projetad
 
 - 🧠 **IA Cognitiva**: Conversas naturais com contexto, alimentadas pelo Google Gemini.
 - 📅 **Google Calendar**: Agende, liste, edite e cancele eventos usando linguagem natural.
-- ✅ **Google Tasks**: Crie tarefas, listas e marque itens como concluídos.
+
 - 📋 **Trello**: Gerencie quadros, listas, crie cards e mova itens entre listas.
 - ⏰ **Agendamento Inteligente**: O bot entende "amanhã às 14h", "próxima sexta", etc.
 - 📚 **Memória de Longo Prazo**: Guarde informações importantes (senhas, códigos, notas) e recupere quando precisar.
@@ -36,12 +36,12 @@ Siga estas etapas para configurar todas as credenciais necessárias.
 2. Crie uma nova API Key.
 3. Copie a chave gerada.
 
-### 3. Configurar Google Cloud (Calendar & Tasks)
+### 3. Configurar Google Cloud (Calendar)
 1. Acesse o [Google Cloud Console](https://console.cloud.google.com/).
 2. Crie um novo projeto.
 3. No menu "APIs e Serviços" > "Biblioteca", ative:
    - **Google Calendar API**
-   - **Google Tasks API**
+
 4. Vá em "Credenciais" > "Criar Credenciais" > **ID do cliente OAuth**.
 5. Tipo de aplicativo: **Aplicação da Web**.
 6. Em "URIs de redirecionamento autorizados", adicione:
@@ -120,10 +120,7 @@ Aqui estão alguns exemplos do que você pode dizer ao bot:
 - **Editar:** "Muda a reunião das 14h para 15h"
 - **Cancelar:** "Cancela o evento de amanhã"
 
-### ✅ Tarefas (Google Tasks)
-- **Criar:** "Lembrar de pagar a conta de luz sexta-feira"
-- **Listar:** "Minhas tarefas pendentes"
-- **Concluir:** "Marcar pagar conta como feito"
+
 
 ### 🗂️ Trello
 - **Criar Card:** "Criar card 'Corrigir bug do login' na lista Backlog"

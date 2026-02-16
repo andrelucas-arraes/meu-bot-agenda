@@ -95,7 +95,7 @@ function getConfirmationKeyboard(confirmationId) {
 /**
  * Formata preview de itens para confirmação
  * @param {Array} items - Itens a serem exibidos
- * @param {string} type - 'events', 'tasks', 'cards'
+ * @param {string} type - 'events', 'cards'
  * @param {number} maxShow - Máximo de itens a mostrar
  * @returns {string} Mensagem formatada
  */
@@ -104,7 +104,7 @@ function formatPreview(items, type, maxShow = 5) {
 
     const typeEmoji = {
         events: '📅',
-        tasks: '✅',
+
         cards: '📌'
     };
 
