@@ -102,7 +102,8 @@ function generateAlternativeTimes(originalStart, originalEnd, existingEvents) {
             }
         }
 
-        if (!hasConflict && newStart > DateTime.now()) {
+        const now = DateTime.now().setZone(config.timezone);
+        if (!hasConflict && newStart > now) {
             suggestions.push({
                 start: newStart.toFormat('HH:mm'),
                 end: newEnd.toFormat('HH:mm'),

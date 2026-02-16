@@ -206,7 +206,11 @@ function deleteInfo(identifier) {
  */
 function extractKey(value) {
     // Remove palavras comuns e mantém as chaves
-    const stopWords = ['é', 'da', 'do', 'de', 'a', 'o', 'que', 'e', 'um', 'uma'];
+    const stopWords = [
+        'é', 'da', 'do', 'de', 'a', 'o', 'que', 'e', 'um', 'uma',
+        'em', 'no', 'na', 'para', 'com', 'por', 'meu', 'minha',
+        'seu', 'sua', 'guarda', 'anota', 'lembra', 'qual', 'como'
+    ];
     const words = value.toLowerCase()
         .replace(/[^\w\sáàâãéèêíìîóòôõúùûç]/g, '')
         .split(/\s+/)

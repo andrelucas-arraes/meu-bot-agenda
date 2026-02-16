@@ -4,6 +4,7 @@ const googleService = require('./google');
 const trelloService = require('./trello');
 const { log } = require('../utils/logger');
 const { formatFriendlyDate, getEventStatusEmoji } = require('../utils/dateFormatter');
+const { formatTrelloCardListItem } = require('../utils/trelloFormatter');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
@@ -136,6 +137,15 @@ async function invalidateCache(type = 'all') {
             memoryCache.trelloCards = await trelloService.listAllCards();
         }
 
+        // Limpa o Set de notificações antigas (para não crescer infinitamente)
+        // Mantém apenas os IDs do cache atual para evitar re-notificar se o cache for invalidado
+        const currentEventIds = new Set(memoryCache.events.map(e => e.id));
+        for (const id of notifiedEvents) {
+            if (!currentEventIds.has(id)) {
+                notifiedEvents.delete(id);
+            }
+        }
+
         memoryCache.lastUpdate = now.toISO();
         saveCacheToDisk();
 
@@ -226,7 +236,7 @@ function initScheduler(bot) {
             if (todoCards.length > 0) {
                 msg += `🗂️ *Trello (A Fazer):*\n`;
                 todoCards.slice(0, 10).forEach(c => {
-                    msg += `   🔹 [${c.name}](${c.shortUrl})\n`;
+                    msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
                 });
                 if (todoCards.length > 10) msg += `   ...e mais ${todoCards.length - 10} cards.\n`;
                 msg += '\n';
@@ -303,7 +313,7 @@ function initScheduler(bot) {
         if (todoCards.length > 0) {
             msg += `🗂️ *Trello A Fazer (${todoCards.length}):*\n`;
             todoCards.slice(0, 5).forEach(c => {
-                msg += `   🔹 [${c.name}](${c.shortUrl})\n`;
+                msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
             });
             if (todoCards.length > 5) msg += `   ...e mais ${todoCards.length - 5}.\n`;
             msg += '\n';

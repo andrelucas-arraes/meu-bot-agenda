@@ -213,9 +213,16 @@ module.exports = {
     getStatus: async () => {
         try {
             const auth = await getAuthClient();
-            return { online: true, authenticated: !!auth.credentials };
+            return {
+                online: true,
+                authenticated: !!(auth.credentials && auth.credentials.access_token)
+            };
         } catch (e) {
-            return { online: false, error: e.message };
+            return {
+                online: true,
+                authenticated: false,
+                error: e.message
+            };
         }
     }
 };

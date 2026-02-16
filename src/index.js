@@ -17,6 +17,7 @@ const { getEventSuggestions, getTrelloSuggestions, getConflictButtons } = requir
 const actionHistory = require('./utils/actionHistory');
 const confirmation = require('./utils/confirmation');
 const { batchProcess } = require('./utils/batchProcessor');
+const { formatTrelloCardListItem, cleanTrelloName } = require('./utils/trelloFormatter');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
@@ -551,7 +552,7 @@ bot.hears('🗂️ Meu Trello', async (ctx) => {
                 msg += `   _(vazia)_\n`;
             } else {
                 group.cards.slice(0, 5).forEach(c => {
-                    msg += `   📌 [${c.name}](${c.shortUrl})\n`;
+                    msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
                 });
                 if (group.cards.length > 5) {
                     msg += `   _...e mais ${group.cards.length - 5} cards_\n`;
@@ -1559,7 +1560,7 @@ async function processIntent(ctx, intent) {
         if (todoCards.length > 0) {
             msg += `🗂️ *Trello (A Fazer):*\n`;
             todoCards.slice(0, 10).forEach(c => {
-                msg += `   📌 [${c.name}](${c.shortUrl})\n`;
+                msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
             });
             if (todoCards.length > 10) msg += `   _...e mais ${todoCards.length - 10} cards_\n`;
         } else {
@@ -1982,9 +1983,7 @@ async function processIntent(ctx, intent) {
                 msg += `   _(vazia)_\n`;
             } else {
                 group.cards.forEach(c => {
-                    msg += `   📌 [${c.name}](${c.shortUrl})`;
-                    if (c.desc) msg += ` - _${c.desc.substring(0, 50)}${c.desc.length > 50 ? '...' : ''}_`;
-                    msg += `\n`;
+                    msg += formatTrelloCardListItem(c, { descLength: 60 }) + '\n';
                 });
             }
             msg += '\n';
@@ -2116,7 +2115,7 @@ async function processIntent(ctx, intent) {
         ctx.session.pendingTrelloDelete = { id: card.id, name: card.name };
 
         await ctx.reply(
-            `⚠️ *Tem certeza que deseja DELETAR PERMANENTEMENTE o card?*\n\n📌 *${card.name}*\n\n_Esta ação não pode ser desfeita!_`,
+            `⚠️ *Tem certeza que deseja DELETAR PERMANENTEMENTE o card?*\n\n📌 *${cleanTrelloName(card.name)}*\n\n_Esta ação não pode ser desfeita!_`,
             { parse_mode: 'Markdown', ...confirmKeyboard }
         );
 
@@ -2131,10 +2130,7 @@ async function processIntent(ctx, intent) {
         msg += `📊 Encontrados: ${cards.length} cards\n\n`;
 
         cards.slice(0, 10).forEach((c, i) => {
-            const closedEmoji = c.closed ? '📦 ' : '';
-            msg += `${i + 1}. ${closedEmoji}[${c.name}](${c.shortUrl})`;
-            if (c.desc) msg += `\n   _${c.desc.substring(0, 50)}${c.desc.length > 50 ? '...' : ''}_`;
-            msg += '\n\n';
+            msg += `${i + 1}. ${formatTrelloCardListItem(c, { showEmoji: false, descLength: 100 }).trim()}\n\n`;
         });
 
         if (cards.length > 10) {
@@ -2150,7 +2146,7 @@ async function processIntent(ctx, intent) {
         // Busca detalhes completos
         const cardDetails = await trelloService.getCard(card.id);
 
-        let msg = `📌 *${cardDetails.name}*\n`;
+        let msg = `📌 *${cleanTrelloName(cardDetails.name)}*\n`;
         msg += `🔗 [Abrir no Trello](${cardDetails.url})\n\n`;
 
         // Descrição
@@ -2205,10 +2201,10 @@ async function processIntent(ctx, intent) {
         const checklists = await trelloService.getCardChecklists(card.id);
 
         if (checklists.length === 0) {
-            return ctx.reply(`📌 O card "*${card.name}*" não tem checklists.`, { parse_mode: 'Markdown' });
+            return ctx.reply(`📌 O card "*${cleanTrelloName(card.name)}*" não tem checklists.`, { parse_mode: 'Markdown' });
         }
 
-        let msg = `☑️ *Checklists de "${card.name}"*\n\n`;
+        let msg = `☑️ *Checklists de "${cleanTrelloName(card.name)}"*\n\n`;
 
         checklists.forEach((cl, clIndex) => {
             const completed = cl.checkItems.filter(i => i.state === 'complete').length;

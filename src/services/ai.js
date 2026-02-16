@@ -153,8 +153,20 @@ async function interpretMessage(text, userId, userContext = '') {
             userSessions[userId] = userSessions[userId].slice(-(MAX_HISTORY_LENGTH * 2));
         }
 
-        // Parse JSON
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        // Parse JSON mais robusto (tenta encontrar o objeto/array)
+        let cleanJson = responseText.trim();
+        const firstBrace = cleanJson.indexOf('{');
+        const firstBracket = cleanJson.indexOf('[');
+        const startIndex = (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) ? firstBrace : firstBracket;
+
+        if (startIndex !== -1) {
+            const lastBrace = cleanJson.lastIndexOf('}');
+            const lastBracket = cleanJson.lastIndexOf(']');
+            const endIndex = Math.max(lastBrace, lastBracket);
+            if (endIndex !== -1) {
+                cleanJson = cleanJson.substring(startIndex, endIndex + 1);
+            }
+        }
         let parsed;
 
         try {
