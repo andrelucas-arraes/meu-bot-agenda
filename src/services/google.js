@@ -148,14 +148,24 @@ async function updateEvent(eventId, updates) {
                 : { date: updates.end };
         }
         if (updates.colorId) resource.colorId = updates.colorId;
+        if (updates.conferenceData) resource.conferenceData = updates.conferenceData;
+        if (updates.attendees) resource.attendees = updates.attendees;
+        if (updates.recurrence) resource.recurrence = updates.recurrence;
 
         log.google('Atualizando evento', { eventId });
 
-        const response = await calendar.events.patch({
+        const patchOptions = {
             calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
             eventId: eventId,
             resource: resource
-        });
+        };
+
+        // conferenceDataVersion é necessário para criar/modificar Meet links
+        if (updates.conferenceData) {
+            patchOptions.conferenceDataVersion = 1;
+        }
+
+        const response = await calendar.events.patch(patchOptions);
 
         log.google('Evento atualizado', { id: response.data.id });
         return response.data;

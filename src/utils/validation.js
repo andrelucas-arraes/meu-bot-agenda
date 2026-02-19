@@ -177,6 +177,18 @@ const reportSchema = z.object({
     target_date: z.string().optional()
 });
 
+// Schema para Concluir todos os eventos
+const completeAllEventsSchema = z.object({
+    tipo: z.literal('complete_all_events'),
+    period: z.string().optional().default('day'),
+});
+
+// Schema para Limpar lista do Trello
+const trelloClearListSchema = z.object({
+    tipo: z.literal('trello_clear_list'),
+    list_query: z.string().min(1, 'Nome da lista é obrigatório'),
+});
+
 // Mapeamento de tipo para schema
 const schemaMap = {
     'create_event': eventSchema,
@@ -185,6 +197,7 @@ const schemaMap = {
     'update_event': updateEventSchema,
     'delete_event': deleteEventSchema,
     'complete_event': deleteEventSchema,
+    'complete_all_events': completeAllEventsSchema,
     'trello_create': trelloCreateSchema,
     'trello': trelloCreateSchema,
     'trello_list': trelloListSchema,
@@ -202,6 +215,7 @@ const schemaMap = {
     'trello_check_item': trelloCheckItemSchema,
     'trello_delete_check_item': trelloDeleteCheckItemSchema,
     'trello_remove_label': trelloRemoveLabelSchema,
+    'trello_clear_list': trelloClearListSchema,
     'chat': chatSchema,
     'neutro': chatSchema,
     // Knowledge Base (Memória de Longo Prazo)

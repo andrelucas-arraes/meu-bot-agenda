@@ -199,6 +199,32 @@ function deleteInfo(identifier) {
     return false;
 }
 
+/**
+ * Atualiza o valor de uma informação existente pelo ID ou key
+ * @param {string} identifier - ID ou key
+ * @param {string} newValue - Novo valor
+ * @returns {Object|null} - Item atualizado ou null se não encontrado
+ */
+function updateInfo(identifier, newValue) {
+    const item = knowledgeBase.items.find(i =>
+        i.id === identifier ||
+        i.key.toLowerCase() === identifier.toLowerCase()
+    );
+
+    if (!item) {
+        log.warn('Knowledge não encontrada para atualização', { identifier });
+        return null;
+    }
+
+    item.value = newValue;
+    item.tags = extractTags(newValue);
+    item.updatedAt = new Date().toISOString();
+
+    saveKnowledge();
+    log.info('Knowledge atualizada', { id: item.id, key: item.key });
+    return item;
+}
+
 // --- HELPERS ---
 
 /**
@@ -295,6 +321,7 @@ module.exports = {
     queryInfo,
     listInfo,
     deleteInfo,
+    updateInfo,
     getContextualInfo,
     formatInfoForDisplay,
     loadKnowledge,

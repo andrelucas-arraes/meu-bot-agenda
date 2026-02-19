@@ -56,13 +56,23 @@ bot.use(async (ctx, next) => {
 scheduler.initScheduler(bot);
 
 // ============================================
-// PERFIS DE USUÁRIO
+// PERFIS DE USUÁRIO (via env para não expor dados sensíveis no código)
 // ============================================
-const USER_PROFILES = {
-    '1308852555': { name: 'Lazaro Dias', role: 'Colaborador', company: 'Gomes Empreendimentos' },
-    '1405476881': { name: 'Wilfred Gomes', role: 'Dono', company: 'Gomes Empreendimentos' },
-    '146495410': { name: 'Andre Lucas', role: 'Desenvolvedor', company: 'Tech Lead' }
-};
+function loadUserProfiles() {
+    try {
+        const raw = process.env.USER_PROFILES;
+        if (raw) return JSON.parse(raw);
+    } catch (e) {
+        log.warn('Erro ao parsear USER_PROFILES do env', { error: e.message });
+    }
+    // Fallback: perfis hardcoded (mover para env em produção)
+    return {
+        '1308852555': { name: 'Lazaro Dias', role: 'Colaborador', company: 'Gomes Empreendimentos' },
+        '1405476881': { name: 'Wilfred Gomes', role: 'Dono', company: 'Gomes Empreendimentos' },
+        '146495410': { name: 'Andre Lucas', role: 'Desenvolvedor', company: 'Tech Lead' }
+    };
+}
+const USER_PROFILES = loadUserProfiles();
 
 function getUserContext(userId) {
     const profile = USER_PROFILES[userId];
@@ -70,13 +80,30 @@ function getUserContext(userId) {
     return `USUÁRIO ATUAL:\nNOME: ${profile.name}\nFUNÇÃO: ${profile.role}\nEMPRESA: ${profile.company}`;
 }
 
+// Função utilitária: normaliza string removendo acentos e convertendo para minúsculas
+const normalize = str => str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+// Função utilitária: sanitiza mensagem de erro para o usuário (não expõe detalhes internos)
+function sanitizeErrorMessage(error) {
+    const msg = error.message || 'Erro desconhecido';
+    // Remove caminhos de arquivo, tokens, e stack traces
+    if (msg.includes('/') || msg.includes('\\') || msg.length > 100) {
+        return 'Ocorreu um erro interno. Tente novamente.';
+    }
+    return msg;
+}
+
 // ============================================
 // MIDDLEWARE: Autenticação
 // ============================================
 bot.use(async (ctx, next) => {
-    const allowedIds = (process.env.ALLOWED_CHAT_IDS || '').split(',').map(id => id.trim());
+    const rawIds = (process.env.ALLOWED_CHAT_IDS || '').trim();
+    // Se não há IDs configurados, permite todos
+    if (!rawIds) return next();
+
+    const allowedIds = rawIds.split(',').map(id => id.trim()).filter(id => id);
     const userId = String(ctx.from.id);
-    if (allowedIds.length > 0 && !allowedIds.includes(userId) && allowedIds[0] !== '') {
+    if (allowedIds.length > 0 && !allowedIds.includes(userId)) {
         log.bot('Acesso negado', { userId, username: ctx.from.username });
         return ctx.reply(`🚫 Acesso negado. Seu ID é: ${userId}`);
     }
@@ -115,7 +142,7 @@ const mainKeyboard = Markup.keyboard([
 
 // Função helper para enviar com teclado
 function replyWithKeyboard(ctx, message, options = {}) {
-    return ctx.reply(message, { ...options, ...mainKeyboard });
+    return ctx.reply(message, { ...mainKeyboard, ...options });
 }
 
 // ============================================
@@ -415,7 +442,7 @@ bot.command('desfazer', async (ctx) => {
 
     } catch (error) {
         log.apiError('Undo', error);
-        ctx.reply(`❌ Erro ao desfazer: ${error.message}`);
+        ctx.reply(`❌ Erro ao desfazer: ${sanitizeErrorMessage(error)}`);
     }
 });
 
@@ -641,14 +668,11 @@ bot.action(/event_add_meet:(.+)/, async (ctx) => {
     try {
         await ctx.answerCbQuery('📹 Adicionando link do Meet...');
 
-        // Busca o evento atual
-        const auth = await require('./services/google');
-
-        // Atualiza com conferência
+        // Atualiza com conferência (conferenceDataVersion é tratado em google.js)
         const event = await googleService.updateEvent(eventId, {
             conferenceData: {
                 createRequest: {
-                    requestId: Math.random().toString(36).substring(7),
+                    requestId: crypto.randomUUID(),
                     conferenceSolutionKey: { type: 'hangoutsMeet' }
                 }
             }
@@ -656,8 +680,9 @@ bot.action(/event_add_meet:(.+)/, async (ctx) => {
 
         scheduler.invalidateCache('events');
 
+        const meetLink = event.hangoutLink ? `\n📹 Link: ${event.hangoutLink}` : '';
         await ctx.editMessageText(
-            `✅ Link do Meet adicionado ao evento!\n\n📹 O link será gerado automaticamente.`,
+            `✅ Link do Meet adicionado ao evento!${meetLink}`,
             { parse_mode: 'Markdown' }
         );
     } catch (error) {
@@ -1027,7 +1052,7 @@ async function findEventByQuery(query, targetDate = null) {
         start = target.startOf('day').toISO();
         end = target.endOf('day').toISO();
     } else {
-        const now = DateTime.now();
+        const now = DateTime.now().setZone('America/Sao_Paulo');
         start = now.startOf('day').toISO();
         end = now.plus({ days: 30 }).toISO();
     }
@@ -1097,8 +1122,12 @@ bot.on('text', async (ctx) => {
     if (ctx.session?.pendingKBUpdate) {
         const id = ctx.session.pendingKBUpdate;
         try {
-            await knowledgeService.updateInfo(id, text);
-            await ctx.reply('✅ Informação atualizada com sucesso!');
+            const updated = knowledgeService.updateInfo(id, text);
+            if (updated) {
+                await ctx.reply('✅ Informação atualizada com sucesso!');
+            } else {
+                await ctx.reply('⚠️ Informação não encontrada para atualizar.');
+            }
         } catch (error) {
             log.apiError('Bot', error);
             await ctx.reply('❌ Erro ao atualizar informação.');
@@ -1118,7 +1147,22 @@ bot.on('text', async (ctx) => {
                 await trelloService.addChecklist(id, 'Checklist', items);
                 await ctx.reply('✅ Checklist adicionada!');
             } else if (action === 'set_due') {
-                await trelloService.updateCard(id, { due: text }); // Trello service deve tratar formato
+                // Tenta converter texto natural para ISO 8601
+                const { DateTime: LuxonDT } = require('luxon');
+                let dueDate = LuxonDT.fromISO(text, { zone: 'America/Sao_Paulo' });
+                if (!dueDate.isValid) {
+                    // Tenta formatos comuns (dd/MM/yyyy, dd-MM-yyyy)
+                    dueDate = LuxonDT.fromFormat(text.trim(), 'dd/MM/yyyy', { zone: 'America/Sao_Paulo' });
+                }
+                if (!dueDate.isValid) {
+                    dueDate = LuxonDT.fromFormat(text.trim(), 'dd-MM-yyyy', { zone: 'America/Sao_Paulo' });
+                }
+                if (!dueDate.isValid) {
+                    await ctx.reply('⚠️ Formato de data inválido. Use dd/MM/yyyy (ex: 25/03/2026) ou formato ISO.');
+                    delete ctx.session.pendingTrelloUpdate;
+                    return;
+                }
+                await trelloService.updateCard(id, { due: dueDate.toISO() });
                 await ctx.reply('✅ Prazo definido!');
             } else if (action === 'set_desc') {
                 await trelloService.updateCard(id, { desc: text });
@@ -1251,15 +1295,16 @@ bot.on('text', async (ctx) => {
             }
         }
 
+        // Aplica fallback de data APENAS para intents de ação (não para chat/reflexão)
+        const actionTypes = ['create_event', 'evento', 'list_events', 'update_event', 'delete_event', 'complete_event', 'complete_all_events'];
         if (forcedDate) {
             if (Array.isArray(intentResult)) {
                 intentResult.forEach(i => {
-                    // Sobrescreve se for igual a hoje ou se estiver nulo
-                    if (!i.target_date || i.target_date === nowSP.toFormat('yyyy-MM-dd')) {
+                    if (actionTypes.includes(i.tipo) && (!i.target_date || i.target_date === nowSP.toFormat('yyyy-MM-dd'))) {
                         i.target_date = forcedDate;
                     }
                 });
-            } else if (intentResult) {
+            } else if (intentResult && actionTypes.includes(intentResult.tipo)) {
                 if (!intentResult.target_date || intentResult.target_date === nowSP.toFormat('yyyy-MM-dd')) {
                     intentResult.target_date = forcedDate;
                 }
@@ -1285,7 +1330,7 @@ bot.on('text', async (ctx) => {
     } catch (error) {
         log.apiError('Bot Main Loop', error, { userId, text: text.substring(0, 50) });
         await ctx.telegram.deleteMessage(ctx.chat.id, processingMsg.message_id).catch(() => { });
-        await ctx.reply(`❌ Erro técnico: ${error.message}. Tente reformular o pedido.`);
+        await ctx.reply(`❌ Erro técnico: ${sanitizeErrorMessage(error)}. Tente reformular o pedido.`);
     }
 });
 
@@ -1440,8 +1485,11 @@ async function processIntent(ctx, intent) {
             end = now.plus({ days: 7 }).endOf('day').toISO();
             periodLabel = 'esta semana';
         } else {
-            // Trata como data específica
+            // Tenta tratar como data ISO específica
             const target = DateTime.fromISO(intent.period, { zone: 'America/Sao_Paulo' });
+            if (!target.isValid) {
+                return ctx.reply(`⚠️ Período "${intent.period}" não reconhecido. Use "hoje", "semana" ou uma data válida.`);
+            }
             start = target.startOf('day').toISO();
             end = target.endOf('day').toISO();
             periodLabel = target.toFormat('dd/MM');
@@ -1462,11 +1510,11 @@ async function processIntent(ctx, intent) {
 
         await ctx.reply(`⏳ Marcando ${pendingEvents.length} eventos como concluídos...`);
 
-        // Processa em paralelo
-        const promises = pendingEvents.map(e =>
-            googleService.updateEvent(e.id, { summary: `✅ ${e.summary}`, colorId: '8' })
+        // Processa em batches para evitar rate limiting
+        await batchProcess(
+            pendingEvents,
+            e => googleService.updateEvent(e.id, { summary: `✅ ${e.summary}`, colorId: '8' })
         );
-        await Promise.all(promises);
 
         scheduler.invalidateCache('events');
         await ctx.reply(`✅ ${pendingEvents.length} eventos de ${periodLabel} marcados como concluídos!`);
@@ -1673,7 +1721,6 @@ async function processIntent(ctx, intent) {
                 availableLists: groups.map(g => g.name)
             });
 
-            const normalize = str => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
             const queryNorm = normalize(cleanListQuery);
 
             // 1. Tenta match exato normalizado primeiro
@@ -1773,7 +1820,6 @@ async function processIntent(ctx, intent) {
                     if (!query) continue;
 
                     // Normalização para busca: remove acentos e espaços extras
-                    const normalize = str => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
                     const normalizedQuery = normalize(query);
 
                     // 1. Match exato normalizado
@@ -1995,15 +2041,20 @@ async function processIntent(ctx, intent) {
         const card = await findTrelloCardByQuery(intent.query);
         if (!card) return ctx.reply('⚠️ Card não encontrado.');
 
-        const updateData = { ...intent };
-        // Validação de data
-        if (updateData.due) {
-            const dueTime = DateTime.fromISO(updateData.due, { zone: 'America/Sao_Paulo' });
-            if (!dueTime.isValid) {
-                log.warn('Data Trello inválida (update), ignorando data', { due: updateData.due });
-                delete updateData.due;
+        // Extrai apenas campos válidos do Trello (evita passar tipo, query, etc.)
+        const updateData = {};
+        if (intent.name) updateData.name = intent.name;
+        if (intent.desc) updateData.desc = intent.desc;
+        if (intent.due) {
+            const dueTime = DateTime.fromISO(intent.due, { zone: 'America/Sao_Paulo' });
+            if (dueTime.isValid) {
+                updateData.due = intent.due;
+            } else {
+                log.warn('Data Trello inválida (update), ignorando data', { due: intent.due });
             }
         }
+        if (intent.idList) updateData.idList = intent.idList;
+        if (intent.closed !== undefined) updateData.closed = intent.closed;
 
         await trelloService.updateCard(card.id, updateData);
         scheduler.invalidateCache('trello');

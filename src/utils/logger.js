@@ -8,6 +8,7 @@ const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
 const { AsyncLocalStorage } = require('async_hooks');
+const config = require('../config');
 
 const localStorage = new AsyncLocalStorage();
 
@@ -30,24 +31,46 @@ const getLogFile = () => {
     return path.join(LOGS_DIR, `bot-${today}.log`);
 };
 
-// Streams: console + arquivo
+// Streams: console + arquivo (com rotação diária)
+let currentLogDate = null;
+let currentFileStream = null;
+
+function getOrCreateFileStream() {
+    const today = new Date().toISOString().split('T')[0];
+    if (currentLogDate !== today) {
+        // Fecha stream anterior se existir
+        if (currentFileStream) {
+            try { currentFileStream.end(); } catch (e) { /* ignora */ }
+        }
+        currentLogDate = today;
+        const logFile = path.join(LOGS_DIR, `bot-${today}.log`);
+        currentFileStream = fs.createWriteStream(logFile, { flags: 'a' });
+    }
+    return currentFileStream;
+}
+
+// Stream dinâmico que redireciona para o arquivo do dia correto
+const dailyRotatingStream = new (require('stream').Writable)({
+    write(chunk, encoding, callback) {
+        try {
+            const stream = getOrCreateFileStream();
+            stream.write(chunk, encoding, callback);
+        } catch (e) {
+            callback();
+        }
+    }
+});
+
 const streams = [
     // Console (formatado em dev, JSON em prod)
     {
         stream: isDev
             ? require('pino-pretty')({ colorize: true, translateTime: 'SYS:standard', ignore: 'pid,hostname' })
             : process.stdout
-    }
+    },
+    // Arquivo com rotação diária
+    { stream: dailyRotatingStream }
 ];
-
-// Adiciona stream de arquivo se possível
-try {
-    const logFile = getLogFile();
-    const fileStream = fs.createWriteStream(logFile, { flags: 'a' });
-    streams.push({ stream: fileStream });
-} catch (e) {
-    console.error('Não foi possível criar stream de log para arquivo', e.message);
-}
 
 // Redaction keys
 const SENSITIVE_KEYS = ['token', 'key', 'password', 'secret', 'authorization', 'apiKey', 'accessToken'];
@@ -133,7 +156,7 @@ const cleanOldLogs = async () => {
     try {
         const files = await fs.promises.readdir(LOGS_DIR);
         const now = Date.now();
-        const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 dias
+        const maxAge = (config.logging?.maxLogAgeDays || 7) * 24 * 60 * 60 * 1000;
 
         for (const file of files) {
             const filePath = path.join(LOGS_DIR, file);

@@ -57,6 +57,7 @@ async function getLabels(boardId = process.env.TRELLO_BOARD_ID) {
         if (!boardId) throw new Error('TRELLO_BOARD_ID required');
         const url = `${BASE_URL}/boards/${boardId}/labels?${getAuthParams()}`;
         const response = await fetchTrello(url);
+        if (!response.ok) throw new Error(await response.text());
         return await response.json();
     }, 'getLabels');
 }
@@ -66,6 +67,7 @@ async function getMembers(boardId = process.env.TRELLO_BOARD_ID) {
         if (!boardId) throw new Error('TRELLO_BOARD_ID required');
         const url = `${BASE_URL}/boards/${boardId}/members?${getAuthParams()}`;
         const response = await fetchTrello(url);
+        if (!response.ok) throw new Error(await response.text());
         return await response.json();
     }, 'getMembers');
 }
@@ -155,50 +157,48 @@ async function listCards(listId = TRELLO_LIST_INBOX) {
 }
 
 async function listAllCards() {
-    return withTrelloRetry(async () => {
+    try {
         const lists = await getLists();
-        let allCards = [];
+        const cards = await getBoardCards();
 
-        // Sequential execution to avoid hitting rate limits
-        for (const list of lists) {
-            try {
-                const cards = await listCards(list.id);
-                const cardsWithList = cards.map(c => ({ ...c, listName: list.name }));
-                allCards = allCards.concat(cardsWithList);
-            } catch (e) {
-                log.error(`Erro ao buscar cards da lista ${list.name}`, { error: e.message });
-            }
-        }
+        // Cria mapa de id -> nome da lista
+        const listMap = {};
+        lists.forEach(l => { listMap[l.id] = l.name; });
+
+        // Adiciona listName a cada card
+        const allCards = cards
+            .filter(c => !c.closed)
+            .map(c => ({ ...c, listName: listMap[c.idList] || 'Desconhecida' }));
 
         log.trello('Todos os cards listados', { count: allCards.length });
         return allCards;
-    }, 'listAllCards');
+    } catch (error) {
+        log.error('Erro ao listar todos os cards', { error: error.message });
+        return [];
+    }
 }
 
 async function listAllCardsGrouped() {
-    return withTrelloRetry(async () => {
+    try {
         const lists = await getLists();
-        const result = [];
+        const cards = await getBoardCards();
 
-        for (const list of lists) {
-            try {
-                const cards = await listCards(list.id);
-                result.push({
-                    id: list.id,
-                    name: list.name,
-                    cards: cards
-                });
-            } catch (e) {
-                log.error(`Erro ao buscar cards da lista ${list.name}`, { error: e.message });
-            }
-        }
+        // Agrupa cards por lista
+        const result = lists.map(list => ({
+            id: list.id,
+            name: list.name,
+            cards: cards.filter(c => c.idList === list.id && !c.closed)
+        }));
 
         log.trello('Cards agrupados', {
             lists: result.length,
             totalCards: result.reduce((sum, l) => sum + l.cards.length, 0)
         });
         return result;
-    }, 'listAllCardsGrouped');
+    } catch (error) {
+        log.error('Erro ao agrupar cards', { error: error.message });
+        return [];
+    }
 }
 
 async function updateCard(cardId, updates) {

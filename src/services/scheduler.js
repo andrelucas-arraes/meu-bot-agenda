@@ -32,6 +32,21 @@ let memoryCache = {
 const CACHE_TTL = config.cache.ttlMs;
 
 /**
+ * Verifica se uma lista é de cards concluídos
+ * Função utilitária compartilhada para evitar duplicação
+ */
+function isCompletedList(listName) {
+    if (!listName) return false;
+    const name = listName.toLowerCase();
+    return name.includes('concluido') ||
+        name.includes('concluído') ||
+        name.includes('feito') ||
+        name.includes('done') ||
+        name.includes('finalizado') ||
+        name.includes('arquivado');
+}
+
+/**
  * Verifica se o cache está desatualizado
  */
 function isCacheStale() {
@@ -65,7 +80,7 @@ function saveCacheToDisk() {
     }
 }
 
-function loadCacheFromDisk() {
+async function loadCacheFromDisk() {
     try {
         if (fs.existsSync(CACHE_FILE)) {
             const data = fs.readFileSync(CACHE_FILE);
@@ -82,7 +97,7 @@ function loadCacheFromDisk() {
             const diff = DateTime.now().diff(lastUpdate, 'hours').hours;
             if (diff > config.cache.staleThresholdHours) {
                 log.scheduler('Cache antigo, forçando atualização');
-                refreshDataCache();
+                await refreshDataCache();
             }
         }
     } catch (e) {
@@ -164,13 +179,15 @@ function initScheduler(bot) {
 
     log.scheduler('Iniciando scheduler persistente');
 
-    // 1. Tenta carregar do disco primeiro
-    loadCacheFromDisk();
+    // 1. Tenta carregar do disco primeiro (async)
+    (async () => {
+        await loadCacheFromDisk();
 
-    // 2. Se vazio, busca agora
-    if (memoryCache.events.length === 0) {
-        refreshDataCache();
-    }
+        // 2. Se vazio, busca agora
+        if (memoryCache.events.length === 0) {
+            await refreshDataCache();
+        }
+    })().catch(e => log.error('Erro ao inicializar cache do scheduler', { error: e.message }));
 
     // ============================================
     // CRON 1: ATUALIZADOR DE CACHE (Duração baseada no config)
@@ -199,19 +216,7 @@ function initScheduler(bot) {
         const pendingEvents = todaysEvents.filter(e => !e.summary.startsWith('✅'));
 
         // Tarefas pendentes (todos os cards exceto os em listas de conclusão)
-        const todoCards = memoryCache.trelloCards.filter(c => {
-            if (!c.listName) return false;
-            const listName = c.listName.toLowerCase();
-            const isCompleted =
-                listName.includes('concluido') ||
-                listName.includes('concluído') ||
-                listName.includes('feito') ||
-                listName.includes('done') ||
-                listName.includes('finalizado') ||
-                listName.includes('arquivado') ||
-                listName.includes('concluído');
-            return !isCompleted;
-        });
+        const todoCards = memoryCache.trelloCards.filter(c => !isCompletedList(c.listName));
 
         let msg = `☀️ *Bom dia! Resumo de hoje (${now.toFormat('dd/MM')}):*\n\n`;
 
@@ -283,18 +288,7 @@ function initScheduler(bot) {
         });
 
         // Trello Pendentes
-        const todoCards = memoryCache.trelloCards.filter(c => {
-            if (!c.listName) return false;
-            const listName = c.listName.toLowerCase();
-            const isCompleted =
-                listName.includes('concluido') ||
-                listName.includes('concluído') ||
-                listName.includes('feito') ||
-                listName.includes('done') ||
-                listName.includes('finalizado') ||
-                listName.includes('arquivado');
-            return !isCompleted;
-        });
+        const todoCards = memoryCache.trelloCards.filter(c => !isCompletedList(c.listName));
 
         let msg = `🕑 *Check das 14h:*\n\n`;
 

@@ -47,14 +47,20 @@ function saveHistory() {
 
 const MAX_HISTORY_LENGTH = 10;
 
+// Cache do prompt em memória (evita fs.readFileSync a cada mensagem)
+let cachedPromptTemplate = null;
+
 function getSystemPrompt(userContext = '') {
-    let promptTemplate = fs.readFileSync(PROMPT_PATH, 'utf-8');
+    if (!cachedPromptTemplate) {
+        cachedPromptTemplate = fs.readFileSync(PROMPT_PATH, 'utf-8');
+    }
+    let promptTemplate = cachedPromptTemplate;
     const now = DateTime.now().setZone('America/Sao_Paulo');
     const tomorrow = now.plus({ days: 1 });
 
-    // Calcula próxima segunda, terça, etc.
+    // Calcula próximo dia da semana (sempre avança pelo menos 1 dia)
     const getNextWeekday = (weekday) => {
-        let target = now;
+        let target = now.plus({ days: 1 });
         while (target.weekday !== weekday) {
             target = target.plus({ days: 1 });
         }
@@ -146,12 +152,12 @@ async function interpretMessage(text, userId, userContext = '') {
             { role: "model", parts: [{ text: responseText }] }
         );
 
-        saveHistory();
-
-        // Prune history
+        // Prune history ANTES de salvar (evita crescimento indefinido do arquivo)
         if (userSessions[userId].length > MAX_HISTORY_LENGTH * 2) {
             userSessions[userId] = userSessions[userId].slice(-(MAX_HISTORY_LENGTH * 2));
         }
+
+        saveHistory();
 
         // Parse JSON mais robusto (tenta encontrar o objeto/array)
         let cleanJson = responseText.trim();

@@ -12,11 +12,11 @@ class RateLimiter {
         this.windowMs = options.windowMs || 60000;   // janela em ms (1 minuto)
         this.blockDurationMs = options.blockDurationMs || 30000; // tempo de bloqueio (30s)
 
-        // Storage: { oderId: { requests: [timestamps], blockedUntil: timestamp } }
+        // Storage: { userId: { requests: [timestamps], blockedUntil: timestamp } }
         this.users = new Map();
 
-        // Limpa entradas antigas periodicamente
-        setInterval(() => this.cleanup(), 60000);
+        // Limpa entradas antigas periodicamente (armazena referência para cleanup)
+        this._cleanupInterval = setInterval(() => this.cleanup(), 60000);
     }
 
     /**
@@ -119,6 +119,16 @@ class RateLimiter {
                 blockDurationMs: this.blockDurationMs
             }
         };
+    }
+
+    /**
+     * Limpa o interval para permitir o processo encerrar graciosamente
+     */
+    destroy() {
+        if (this._cleanupInterval) {
+            clearInterval(this._cleanupInterval);
+            this._cleanupInterval = null;
+        }
     }
 }
 
