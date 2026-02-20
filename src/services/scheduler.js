@@ -4,7 +4,7 @@ const googleService = require('./google');
 const trelloService = require('./trello');
 const { log } = require('../utils/logger');
 const { formatFriendlyDate, getEventStatusEmoji } = require('../utils/dateFormatter');
-const { formatTrelloCardListItem } = require('../utils/trelloFormatter');
+const { formatTrelloCardListItem, splitTelegramMessage } = require('../utils/trelloFormatter');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
@@ -240,10 +240,9 @@ function initScheduler(bot) {
 
             if (todoCards.length > 0) {
                 msg += `🗂️ *Trello (A Fazer):*\n`;
-                todoCards.slice(0, 10).forEach(c => {
-                    msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
+                todoCards.forEach(c => {
+                    msg += formatTrelloCardListItem(c, { descLength: 80 }) + '\n';
                 });
-                if (todoCards.length > 10) msg += `   ...e mais ${todoCards.length - 10} cards.\n`;
                 msg += '\n';
             }
         }
@@ -263,7 +262,13 @@ function initScheduler(bot) {
         const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
         msg += `\n_${randomPhrase}_`;
 
-        chatIds.forEach(id => bot.telegram.sendMessage(id, msg, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(e => { }));
+        // Divide em múltiplas mensagens se ultrapassar o limite do Telegram
+        const parts = splitTelegramMessage(msg);
+        chatIds.forEach(id => {
+            parts.forEach(part => {
+                bot.telegram.sendMessage(id, part, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(e => { });
+            });
+        });
     }, { timezone: "America/Sao_Paulo" });
 
     // ============================================
@@ -306,10 +311,9 @@ function initScheduler(bot) {
         // 2. Trello
         if (todoCards.length > 0) {
             msg += `🗂️ *Trello A Fazer (${todoCards.length}):*\n`;
-            todoCards.slice(0, 5).forEach(c => {
-                msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
+            todoCards.forEach(c => {
+                msg += formatTrelloCardListItem(c, { descLength: 80 }) + '\n';
             });
-            if (todoCards.length > 5) msg += `   ...e mais ${todoCards.length - 5}.\n`;
             msg += '\n';
         }
 
@@ -333,7 +337,13 @@ function initScheduler(bot) {
 
         msg += `_${randomPhrase}_`;
 
-        chatIds.forEach(id => bot.telegram.sendMessage(id, msg, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(e => { }));
+        // Divide em múltiplas mensagens se ultrapassar o limite do Telegram
+        const parts = splitTelegramMessage(msg);
+        chatIds.forEach(id => {
+            parts.forEach(part => {
+                bot.telegram.sendMessage(id, part, { parse_mode: 'Markdown', disable_web_page_preview: true }).catch(e => { });
+            });
+        });
     }, { timezone: "America/Sao_Paulo" });
 
     // ============================================

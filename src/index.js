@@ -17,7 +17,8 @@ const { getEventSuggestions, getTrelloSuggestions, getConflictButtons } = requir
 const actionHistory = require('./utils/actionHistory');
 const confirmation = require('./utils/confirmation');
 const { batchProcess } = require('./utils/batchProcessor');
-const { formatTrelloCardListItem, cleanTrelloName } = require('./utils/trelloFormatter');
+const { formatTrelloCardListItem, cleanTrelloName, splitTelegramMessage } = require('./utils/trelloFormatter');
+const config = require('./config');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
@@ -164,55 +165,118 @@ bot.command('api', async (ctx) => {
         const ai = getAiStatus();
         const trello = trelloService.getStatus();
         const google = await googleService.getStatus();
+        const cacheData = await scheduler.getData();
+        const knowledgeItems = knowledgeService.listInfo();
 
         const uptime = process.uptime();
-        const uptimeString = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
+        const days = Math.floor(uptime / 86400);
+        const hours = Math.floor((uptime % 86400) / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+        const seconds = Math.floor(uptime % 60);
+        let uptimeString = '';
+        if (days > 0) uptimeString += `${days}d `;
+        uptimeString += `${hours}h ${minutes}m ${seconds}s`;
 
         const memory = process.memoryUsage();
-        const memoryString = `${Math.round(memory.rss / 1024 / 1024)}MB`;
+        const rssStr = `${Math.round(memory.rss / 1024 / 1024)}MB`;
+        const heapUsed = `${Math.round(memory.heapUsed / 1024 / 1024)}MB`;
+        const heapTotal = `${Math.round(memory.heapTotal / 1024 / 1024)}MB`;
 
         const now = DateTime.now().setZone('America/Sao_Paulo');
         const timestamp = now.toFormat('dd/MM/yyyy HH:mm:ss');
 
         let msg = `📊 *Status do Sistema*\n`;
-        msg += `🕒 ${timestamp}\n\n`;
+        msg += `🕒 ${timestamp}\n`;
+        msg += `🤖 v1.0.0 — Assistente Supremo\n\n`;
 
-        // AI
-        msg += `🤖 *Inteligência Artificial*\n`;
-        msg += `   • Modelo: ${ai.model}\n`;
+        // ═══ AI ═══
+        msg += `🧠 *Inteligência Artificial*\n`;
+        msg += `   • Modelo: \`${ai.model}\`\n`;
         msg += `   • Status: ${ai.online ? '✅ Online' : '❌ Offline'}\n`;
         if (ai.usage) {
+            msg += `   • Requisições: ${ai.usage.totalRequests.toLocaleString()}\n`;
             msg += `   • Tokens Totais: ${ai.usage.totalTokens.toLocaleString()}\n`;
-            msg += `   • Contexto (Prompt): ${ai.usage.promptTokens.toLocaleString()}\n`;
-            msg += `   • Resposta (Tokens): ${ai.usage.candidateTokens.toLocaleString()}\n`;
+            msg += `   • Tokens Prompt: ${ai.usage.promptTokens.toLocaleString()}\n`;
+            msg += `   • Tokens Resposta: ${ai.usage.candidateTokens.toLocaleString()}\n`;
+            msg += `   • Última Chamada: ${ai.usage.lastRequestTokens} tokens\n`;
             msg += `   • Sessões Ativas: ${ai.sessions || 0}\n`;
-            msg += `   • Última Resp: ${ai.usage.lastRequestTokens} tokens\n`;
         }
         msg += '\n';
 
-        // Trello
+        // ═══ Trello ═══
         msg += `🗂️ *Trello*\n`;
         msg += `   • Status: ${trello.online ? '✅ Online' : '❌ Configurar .env'}\n`;
         if (trello.rateLimit && trello.rateLimit.limit) {
-            msg += `   • Limite: ${trello.rateLimit.remaining}/${trello.rateLimit.limit}\n`;
+            const rlPercent = Math.round((trello.rateLimit.remaining / trello.rateLimit.limit) * 100);
+            const rlEmoji = rlPercent > 50 ? '🟢' : rlPercent > 20 ? '🟡' : '🔴';
+            msg += `   • Rate Limit: ${rlEmoji} ${trello.rateLimit.remaining}/${trello.rateLimit.limit} (${rlPercent}%)\n`;
+            if (trello.rateLimit.lastUpdate) {
+                const rlTime = DateTime.fromJSDate(new Date(trello.rateLimit.lastUpdate)).setZone('America/Sao_Paulo');
+                msg += `   • Último Request: ${rlTime.toFormat('HH:mm:ss')}\n`;
+            }
         } else {
-            msg += `   • Limite: _(sem dados recentes)_\n`;
+            msg += `   • Rate Limit: _(sem dados recentes)_\n`;
         }
+        // Cards em cache
+        const cachedCards = cacheData.trelloCards || [];
+        msg += `   • Cards no Cache: ${cachedCards.length}\n`;
         msg += '\n';
 
-        // Google
+        // ═══ Google ═══
         msg += `📅 *Google Services*\n`;
         msg += `   • Status: ${google.online ? '✅ Online' : '❌ Erro'}\n`;
         msg += `   • Autenticado: ${google.authenticated ? '✅ Sim' : '❌ Não'}\n`;
         if (google.error) msg += `   • Erro: _${google.error}_\n`;
+        // Eventos em cache
+        const cachedEvents = cacheData.events || [];
+        msg += `   • Eventos no Cache: ${cachedEvents.length}\n`;
         msg += '\n';
 
-        // System
+        // ═══ Cache ═══
+        msg += `📦 *Cache*\n`;
+        if (cacheData.lastUpdate) {
+            const lastUpdt = DateTime.fromISO(cacheData.lastUpdate).setZone('America/Sao_Paulo');
+            const cacheAge = now.diff(lastUpdt, 'minutes').minutes;
+            const cacheEmoji = cacheAge < 5 ? '🟢' : cacheAge < 30 ? '🟡' : '🔴';
+            msg += `   • Última Atualização: ${lastUpdt.toFormat('HH:mm:ss')}\n`;
+            msg += `   • Idade: ${cacheEmoji} ${Math.round(cacheAge)} min\n`;
+        } else {
+            msg += `   • Status: ⚠️ Não inicializado\n`;
+        }
+        msg += `   • TTL: ${Math.round(config.cache.ttlMs / 60000)} min\n`;
+        msg += '\n';
+
+        // ═══ Knowledge Base ═══
+        msg += `🧠 *Memória (Knowledge Base)*\n`;
+        msg += `   • Itens Salvos: ${knowledgeItems.length}\n`;
+        // Agrupa por categoria para mostrar distribuição
+        if (knowledgeItems.length > 0) {
+            const catCounts = {};
+            knowledgeItems.forEach(item => {
+                const cat = item.category || 'geral';
+                catCounts[cat] = (catCounts[cat] || 0) + 1;
+            });
+            const catList = Object.entries(catCounts).map(([cat, count]) => `${cat}(${count})`).join(', ');
+            msg += `   • Categorias: ${catList}\n`;
+        }
+        msg += '\n';
+
+        // ═══ Agendamentos ═══
+        msg += `⏰ *Tarefas Agendadas*\n`;
+        msg += `   • Resumo Matinal: ${config.scheduler.morningAlertHour}:00\n`;
+        msg += `   • Check da Tarde: ${config.scheduler.afternoonCheckHour}:00\n`;
+        msg += `   • Lembrete Eventos: ${config.scheduler.reminderMinutes} min antes\n`;
+        msg += `   • Refresh Cache: a cada ${Math.round(config.cache.refreshIntervalMs / 60000)} min\n`;
+        msg += '\n';
+
+        // ═══ Servidor ═══
         msg += `⚙️ *Servidor*\n`;
         msg += `   • Uptime: ${uptimeString}\n`;
-        msg += `   • Memória: ${memoryString}\n`;
+        msg += `   • Memória RSS: ${rssStr}\n`;
+        msg += `   • Heap: ${heapUsed} / ${heapTotal}\n`;
         msg += `   • Node: ${process.version}\n`;
         msg += `   • PID: ${process.pid}\n`;
+        msg += `   • Plataforma: ${process.platform} ${process.arch}\n`;
 
         await ctx.telegram.editMessageText(
             ctx.chat.id,
@@ -242,7 +306,8 @@ Escolha uma categoria abaixo para ver exemplos de comandos:
         [Markup.button.callback('📅 Eventos (Calendar)', 'help_events')],
         [Markup.button.callback('🗂️ Trello', 'help_trello')],
         [Markup.button.callback('🧠 Memória', 'help_memory')],
-        [Markup.button.callback('💡 Dicas Gerais', 'help_tips')]
+        [Markup.button.callback('💡 Dicas Gerais', 'help_tips')],
+        [Markup.button.callback('⚡ Comandos Disponíveis', 'help_commands')]
     ]);
 
     ctx.reply(helpMessage, { parse_mode: 'Markdown', ...keyboard });
@@ -371,13 +436,35 @@ bot.action('help_memory', (ctx) => {
     `, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Voltar', 'help_back')]]) });
 });
 
+bot.action('help_commands', (ctx) => {
+    ctx.answerCbQuery();
+    ctx.editMessageText(`
+⚡ *Comandos Disponíveis*
+
+/start — Inicia o bot e mostra menu principal
+/ajuda — Exibe este menu de ajuda com todas as categorias
+/api — Mostra status detalhado de todos os serviços (IA, Trello, Google, Cache, Servidor)
+/desfazer — Desfaz a última ação realizada (criar evento, criar card, etc)
+
+📱 *Botões Rápidos (teclado fixo):*
+• 📅 Agenda de Hoje
+• 📅 Agenda da Semana
+• 🗂️ Meu Trello
+• 🧠 Minha Memória
+• 🔄 Atualizar Tudo
+
+_Dica: Você também pode digitar qualquer coisa em linguagem natural!_ 💬
+    `, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Voltar', 'help_back')]]) });
+});
+
 bot.action('help_back', (ctx) => {
     ctx.answerCbQuery();
     const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('📅 Eventos (Calendar)', 'help_events')],
         [Markup.button.callback('🗂️ Trello', 'help_trello')],
         [Markup.button.callback('🧠 Memória', 'help_memory')],
-        [Markup.button.callback('💡 Dicas Gerais', 'help_tips')]
+        [Markup.button.callback('💡 Dicas Gerais', 'help_tips')],
+        [Markup.button.callback('⚡ Comandos Disponíveis', 'help_commands')]
     ]);
     ctx.editMessageText(`
 🤖 *Assistente Supremo - Ajuda*
@@ -589,17 +676,18 @@ bot.hears('🗂️ Meu Trello', async (ctx) => {
             if (group.cards.length === 0) {
                 msg += `   _(vazia)_\n`;
             } else {
-                group.cards.slice(0, 5).forEach(c => {
-                    msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
+                group.cards.forEach(c => {
+                    msg += formatTrelloCardListItem(c, { descLength: 80 }) + '\n';
                 });
-                if (group.cards.length > 5) {
-                    msg += `   _...e mais ${group.cards.length - 5} cards_\n`;
-                }
             }
             msg += '\n';
         });
 
-        replyWithKeyboard(ctx, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        // Divide em múltiplas mensagens se ultrapassar o limite do Telegram
+        const parts = splitTelegramMessage(msg);
+        for (const part of parts) {
+            await replyWithKeyboard(ctx, part, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        }
     } catch (error) {
         log.apiError('Bot', error);
         ctx.reply('❌ Erro ao buscar Trello.');
@@ -1618,15 +1706,18 @@ async function processIntent(ctx, intent) {
         // TRELLO
         if (todoCards.length > 0) {
             msg += `🗂️ *Trello (A Fazer):*\n`;
-            todoCards.slice(0, 10).forEach(c => {
-                msg += formatTrelloCardListItem(c, { showDesc: false }) + '\n';
+            todoCards.forEach(c => {
+                msg += formatTrelloCardListItem(c, { descLength: 80 }) + '\n';
             });
-            if (todoCards.length > 10) msg += `   _...e mais ${todoCards.length - 10} cards_\n`;
         } else {
             msg += `🗂️ _Nenhum card pendente_\n`;
         }
 
-        await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        // Divide em múltiplas mensagens se ultrapassar o limite do Telegram
+        const summaryParts = splitTelegramMessage(msg);
+        for (const part of summaryParts) {
+            await ctx.reply(part, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        }
 
         // ============================================
         // TRELLO
@@ -2105,7 +2196,11 @@ async function processIntent(ctx, intent) {
             });
         }
 
-        await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        // Divide em múltiplas mensagens se ultrapassar o limite do Telegram
+        const listParts = splitTelegramMessage(msg);
+        for (const part of listParts) {
+            await ctx.reply(part, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        }
 
     } else if (intent.tipo === 'trello_list_lists') {
         const lists = await trelloService.getLists();
@@ -2309,15 +2404,15 @@ async function processIntent(ctx, intent) {
         let msg = `🔍 *Busca: "${intent.query}"*\n\n`;
         msg += `📊 Encontrados: ${cards.length} cards\n\n`;
 
-        cards.slice(0, 10).forEach((c, i) => {
+        cards.forEach((c, i) => {
             msg += `${i + 1}. ${formatTrelloCardListItem(c, { showEmoji: false, descLength: 100 }).trim()}\n\n`;
         });
 
-        if (cards.length > 10) {
-            msg += `_...e mais ${cards.length - 10} cards_`;
+        // Divide em múltiplas mensagens se ultrapassar o limite do Telegram
+        const searchParts = splitTelegramMessage(msg);
+        for (const part of searchParts) {
+            await ctx.reply(part, { parse_mode: 'Markdown', disable_web_page_preview: true });
         }
-
-        await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
     } else if (intent.tipo === 'trello_get') {
         const card = await findTrelloCardByQuery(intent.query);

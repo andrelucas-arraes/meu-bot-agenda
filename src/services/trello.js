@@ -356,7 +356,7 @@ async function searchCards(query, boardId = process.env.TRELLO_BOARD_ID) {
             idBoards: resolvedBoardId,
             modelTypes: 'cards',
             card_fields: 'id,name,desc,due,idList,labels,shortUrl,closed',
-            cards_limit: 20,
+            cards_limit: 50,
             partial: 'true'
         });
 
