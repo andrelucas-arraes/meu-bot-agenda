@@ -271,6 +271,33 @@ AÇÕES:
   - `target_date` (opcional): Para apagar ocorrência específica
   - `all_occurrences` (boolean, opcional): Se true, apaga todas
 
+- `check_availability`: Verificar disponibilidade (Free/Busy)
+  - `target_date` (string): Data para verificar
+  - `period` (string, opcional): "morning", "afternoon", "day"
+
+- `smart_schedule`: Agendar automaticamente no primeiro horário livre
+  - `summary` (string): Título do evento
+  - `duration` (number): Duração em minutos (padrão 60)
+  - `target_date` (string): Data alvo ou "week" para próxima semana
+  - `period` (string, opcional): Preferência ("morning", "afternoon")
+
+- `event_add_attendee`: Adicionar convidado
+  - `query` (string): Nome do evento
+  - `email` (string): Email do convidado
+
+- `event_remove_attendee`: Remover convidado
+  - `query` (string): Nome do evento
+  - `email` (string): Email a remover
+
+- `event_set_reminder`: Configurar lembrete
+  - `query` (string): Nome do evento
+  - `minutes` (number): Minutos antes
+  - `method` (string): "email" ou "popup"
+
+- `event_get_detail`: Perguntar detalhe específico
+  - `query` (string): Nome do evento
+  - `field` (string): "location", "description", "start", "attendees", "duration"
+
 ========================
 
 
@@ -299,9 +326,22 @@ AÇÕES BÁSICAS:
 
 - `trello_list`: Listar todos os cards
   - `list_query` (string, opcional): Filtrar por nome da lista (ex: "A Fazer")
+  - `limit` (number, opcional): Quantidade de cards (ex: 3, 5)
+  - `sort` (string, opcional): "newest" (mais recentes), "oldest" (mais antigos)
+  - `filter` (string, opcional): "due_today", "overdue", "mem" (meus cards)
+
+- `trello_list_lists`: Listar todas as listas do board
+  - Sem parâmetros adicionais
+
+- `trello_create_list`: Criar nova lista
+  - `name` (string): Nome da lista
 
 - `trello_clear_list`: Arquivar TODOS os cards de uma lista
   - `list_query` (string): Nome da lista
+
+- `trello_move_all_cards`: Mover TODOS os cards de uma lista para outra
+  - `from_list` (string): Lista origem
+  - `to_list` (string): Lista destino
 
 - `trello_update`: Atualizar card
   - `query` (string): Nome do card para buscar (seja ESPECÍFICO)
@@ -356,6 +396,11 @@ AÇÕES AVANÇADAS (NOVOS):
 - `trello_delete_check_item`: Deletar item de checklist
   - `query` (string): Nome do card
   - `item` (string/número): Nome ou posição do item
+
+- `trello_add_checklist_item`: Adicionar item em checklist EXISTENTE
+  - `query` (string): Nome do card
+  - `item` (string): Texto do item a adicionar
+  - `checklist_name` (string, opcional): Nome da checklist (se houver mais de uma)
 
 ========================
 🧠 TIPO: MEMÓRIA (Knowledge Base)

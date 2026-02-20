@@ -476,6 +476,45 @@ async function removeLabel(cardId, labelId) {
     }, 'removeLabel');
 }
 
+/**
+ * Cria uma nova lista no board
+ * @param {string} name - Nome da lista
+ * @param {string} boardId - ID do board (opcional)
+ * @returns {Promise<Object>} Nova lista
+ */
+async function createList(name, boardId = process.env.TRELLO_BOARD_ID) {
+    return withTrelloRetry(async () => {
+        const resolvedBoardId = await ensureBoardId(boardId);
+        const url = `${BASE_URL}/lists?name=${encodeURIComponent(name)}&idBoard=${resolvedBoardId}&${getAuthParams()}`;
+
+        const response = await fetchTrello(url, { method: 'POST' });
+        if (!response.ok) throw new Error(await response.text());
+
+        const list = await response.json();
+        log.trello('Lista criada', { name, id: list.id });
+        return list;
+    }, 'createList');
+}
+
+/**
+ * Adiciona um item a uma checklist existente
+ * @param {string} checklistId - ID da checklist
+ * @param {string} name - Texto do item
+ * @returns {Promise<Object>} Item criado
+ */
+async function addItemToChecklist(checklistId, name) {
+    return withTrelloRetry(async () => {
+        const url = `${BASE_URL}/checklists/${checklistId}/checkItems?name=${encodeURIComponent(name)}&${getAuthParams()}`;
+
+        const response = await fetchTrello(url, { method: 'POST' });
+        if (!response.ok) throw new Error(await response.text());
+
+        const item = await response.json();
+        log.trello('Item adicionado à checklist', { checklistId, itemId: item.id });
+        return item;
+    }, 'addItemToChecklist');
+}
+
 module.exports = {
     // Operações básicas
     createCard,
@@ -500,6 +539,8 @@ module.exports = {
     updateCheckItem,
     deleteCheckItem,
     removeLabel,
+    createList,
+    addItemToChecklist,
     // Status
     getStatus: () => ({
         online: !!process.env.TRELLO_API_KEY,

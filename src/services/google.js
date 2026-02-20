@@ -151,6 +151,7 @@ async function updateEvent(eventId, updates) {
         if (updates.conferenceData) resource.conferenceData = updates.conferenceData;
         if (updates.attendees) resource.attendees = updates.attendees;
         if (updates.recurrence) resource.recurrence = updates.recurrence;
+        if (updates.reminders) resource.reminders = updates.reminders;
 
         log.google('Atualizando evento', { eventId });
 
@@ -188,6 +189,26 @@ async function deleteEvent(eventId) {
     }, 'deleteEvent');
 }
 
+async function getFreeBusy(timeMin, timeMax) {
+    return withGoogleRetry(async () => {
+        const auth = await getAuthClient();
+        const calendar = google.calendar({ version: 'v3', auth });
+
+        const response = await calendar.freebusy.query({
+            resource: {
+                timeMin: timeMin,
+                timeMax: timeMax,
+                timeZone: config.timezone,
+                items: [{ id: process.env.GOOGLE_CALENDAR_ID || 'primary' }]
+            }
+        });
+
+        const busy = response.data.calendars[process.env.GOOGLE_CALENDAR_ID || 'primary'].busy;
+        log.google('FreeBusy consultado', { busySlots: busy.length });
+        return busy;
+    }, 'getFreeBusy');
+}
+
 function generateAuthUrl() {
     const oAuth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
@@ -217,6 +238,7 @@ module.exports = {
     listEvents,
     updateEvent,
     deleteEvent,
+    getFreeBusy,
     generateAuthUrl,
     getTokenFromCode,
     // Status
