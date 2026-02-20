@@ -215,8 +215,11 @@ function initScheduler(bot) {
         // Eventos não concluídos
         const pendingEvents = todaysEvents.filter(e => !e.summary.startsWith('✅'));
 
-        // Tarefas pendentes (todos os cards exceto os em listas de conclusão)
-        const todoCards = memoryCache.trelloCards.filter(c => !isCompletedList(c.listName));
+        // Tarefas pendentes - apenas cards com etiqueta "Urgente"
+        const todoCards = memoryCache.trelloCards.filter(c =>
+            !isCompletedList(c.listName) &&
+            c.labels && c.labels.some(l => l.name && l.name.toLowerCase() === 'urgente')
+        );
 
         let msg = `☀️ *Bom dia! Resumo de hoje (${now.toFormat('dd/MM')}):*\n\n`;
 
@@ -239,7 +242,7 @@ function initScheduler(bot) {
             }
 
             if (todoCards.length > 0) {
-                msg += `🗂️ *Trello (A Fazer):*\n`;
+                msg += `🗂️ *Trello (🚨 Urgentes):*\n`;
                 todoCards.forEach(c => {
                     msg += formatTrelloCardListItem(c, { descLength: 80 }) + '\n';
                 });
@@ -292,8 +295,11 @@ function initScheduler(bot) {
             return false;
         });
 
-        // Trello Pendentes
-        const todoCards = memoryCache.trelloCards.filter(c => !isCompletedList(c.listName));
+        // Trello Pendentes - apenas cards com etiqueta "Urgente"
+        const todoCards = memoryCache.trelloCards.filter(c =>
+            !isCompletedList(c.listName) &&
+            c.labels && c.labels.some(l => l.name && l.name.toLowerCase() === 'urgente')
+        );
 
         let msg = `🕑 *Check das 14h:*\n\n`;
 
@@ -310,7 +316,7 @@ function initScheduler(bot) {
 
         // 2. Trello
         if (todoCards.length > 0) {
-            msg += `🗂️ *Trello A Fazer (${todoCards.length}):*\n`;
+            msg += `🗂️ *Trello 🚨 Urgentes (${todoCards.length}):*\n`;
             todoCards.forEach(c => {
                 msg += formatTrelloCardListItem(c, { descLength: 80 }) + '\n';
             });
