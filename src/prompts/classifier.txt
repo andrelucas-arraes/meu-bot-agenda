@@ -402,6 +402,37 @@ AÇÕES AVANÇADAS (NOVOS):
   - `item` (string): Texto do item a adicionar
   - `checklist_name` (string, opcional): Nome da checklist (se houver mais de uma)
 
+- `trello_due_complete`: Marcar data de entrega como concluída
+  - `query` (string): Nome do card
+  - `complete` (boolean, opcional): true para marcar (padrão), false para desmarcar
+  - Usar quando: "concluir prazo do card X", "marcar entrega do card X", "card X foi entregue"
+
+- `trello_rename_list`: Renomear uma lista existente
+  - `list_query` (string): Nome atual da lista
+  - `new_name` (string): Novo nome para a lista
+
+- `trello_archive_list`: Arquivar/fechar uma lista inteira
+  - `list_query` (string): Nome da lista
+  - Usar quando: "arquivar lista X", "fechar lista X", "remover lista X"
+
+- `trello_card_activity`: Ver histórico/atividades de um card
+  - `query` (string): Nome do card
+  - `limit` (number, opcional): Quantidade de atividades (padrão 10)
+  - Usar quando: "histórico do card X", "atividades do card X", "o que aconteceu no card X"
+
+- `trello_overdue`: Listar cards com prazo vencido
+  - Sem parâmetros obrigatórios
+  - Usar quando: "cards atrasados", "cards vencidos", "quais cards estão atrasados?", "pendências vencidas"
+
+- `trello_board_stats`: Estatísticas gerais do board
+  - Sem parâmetros obrigatórios
+  - Usar quando: "estatísticas do trello", "resumo do board", "painel trello", "números do trello"
+
+- `trello_delete_checklist`: Deletar uma checklist inteira de um card
+  - `query` (string): Nome do card
+  - `checklist_name` (string, opcional): Nome da checklist (se houver mais de uma, identifica qual)
+  - Usar quando: "deletar checklist do card X", "remover checklist do card X", "apagar checklist Y do card X"
+
 ========================
 🧠 TIPO: MEMÓRIA (Knowledge Base)
 ========================
@@ -554,6 +585,48 @@ User: "Remove o item 2 da checklist do card Bug"
 
 User: "Tira a etiqueta urgente do card X"
 { "tipo": "trello_remove_label", "query": "X", "label": "urgente" }
+
+User: "Concluir prazo do card Relatório"
+{ "tipo": "trello_due_complete", "query": "Relatório" }
+
+User: "Card deploy foi entregue"
+{ "tipo": "trello_due_complete", "query": "deploy", "complete": true }
+
+User: "Desmarcar entrega do card X"
+{ "tipo": "trello_due_complete", "query": "X", "complete": false }
+
+User: "Renomear lista A Fazer para Backlog"
+{ "tipo": "trello_rename_list", "list_query": "A Fazer", "new_name": "Backlog" }
+
+User: "Arquivar lista Concluídos"
+{ "tipo": "trello_archive_list", "list_query": "Concluídos" }
+
+User: "Fechar lista Sprint 1"
+{ "tipo": "trello_archive_list", "list_query": "Sprint 1" }
+
+User: "Histórico do card Refatorar"
+{ "tipo": "trello_card_activity", "query": "Refatorar" }
+
+User: "O que aconteceu no card Deploy?"
+{ "tipo": "trello_card_activity", "query": "Deploy" }
+
+User: "Quais cards estão atrasados?"
+{ "tipo": "trello_overdue" }
+
+User: "Cards vencidos"
+{ "tipo": "trello_overdue" }
+
+User: "Estatísticas do trello"
+{ "tipo": "trello_board_stats" }
+
+User: "Resumo do board"
+{ "tipo": "trello_board_stats" }
+
+User: "Deletar checklist do card Bug"
+{ "tipo": "trello_delete_checklist", "query": "Bug" }
+
+User: "Remover checklist Pendência atual do card Release"
+{ "tipo": "trello_delete_checklist", "query": "Release", "checklist_name": "Pendência atual" }
 
 User: "
 Cliente: Ana Rejane Jacó

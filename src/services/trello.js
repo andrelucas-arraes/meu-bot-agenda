@@ -515,6 +515,114 @@ async function addItemToChecklist(checklistId, name) {
     }, 'addItemToChecklist');
 }
 
+/**
+ * Marca a data de entrega de um card como concluída ou não
+ * @param {string} cardId - ID do card
+ * @param {boolean} complete - true para marcar como concluído, false para desmarcar
+ * @returns {Promise<Object>} Card atualizado
+ */
+async function markDueComplete(cardId, complete = true) {
+    return withTrelloRetry(async () => {
+        const params = new URLSearchParams({
+            key: TRELLO_API_KEY,
+            token: TRELLO_TOKEN,
+            dueComplete: complete.toString()
+        });
+
+        const url = `${BASE_URL}/cards/${cardId}?${params.toString()}`;
+        const response = await fetchTrello(url, { method: 'PUT' });
+        if (!response.ok) throw new Error(await response.text());
+
+        const card = await response.json();
+        log.trello('DueComplete atualizado', { cardId, complete });
+        return card;
+    }, 'markDueComplete');
+}
+
+/**
+ * Renomeia uma lista existente
+ * @param {string} listId - ID da lista
+ * @param {string} newName - Novo nome para a lista
+ * @returns {Promise<Object>} Lista atualizada
+ */
+async function renameList(listId, newName) {
+    return withTrelloRetry(async () => {
+        const params = new URLSearchParams({
+            key: TRELLO_API_KEY,
+            token: TRELLO_TOKEN,
+            name: newName
+        });
+
+        const url = `${BASE_URL}/lists/${listId}?${params.toString()}`;
+        const response = await fetchTrello(url, { method: 'PUT' });
+        if (!response.ok) throw new Error(await response.text());
+
+        const list = await response.json();
+        log.trello('Lista renomeada', { listId, newName });
+        return list;
+    }, 'renameList');
+}
+
+/**
+ * Arquiva/fecha uma lista
+ * @param {string} listId - ID da lista
+ * @param {boolean} closed - true para arquivar, false para restaurar
+ * @returns {Promise<Object>} Lista atualizada
+ */
+async function archiveList(listId, closed = true) {
+    return withTrelloRetry(async () => {
+        const params = new URLSearchParams({
+            key: TRELLO_API_KEY,
+            token: TRELLO_TOKEN,
+            closed: closed.toString()
+        });
+
+        const url = `${BASE_URL}/lists/${listId}?${params.toString()}`;
+        const response = await fetchTrello(url, { method: 'PUT' });
+        if (!response.ok) throw new Error(await response.text());
+
+        const list = await response.json();
+        log.trello('Lista arquivada/restaurada', { listId, closed });
+        return list;
+    }, 'archiveList');
+}
+
+/**
+ * Obtém o histórico de atividades de um card
+ * @param {string} cardId - ID do card
+ * @param {number} limit - Quantidade de ações (padrão 10)
+ * @returns {Promise<Array>} Ações do card
+ */
+async function getCardActions(cardId, limit = 10) {
+    return withTrelloRetry(async () => {
+        const url = `${BASE_URL}/cards/${cardId}/actions?limit=${limit}&${getAuthParams()}`;
+
+        const response = await fetchTrello(url);
+        if (!response.ok) throw new Error(await response.text());
+
+        const actions = await response.json();
+        log.trello('Ações do card obtidas', { cardId, count: actions.length });
+        return actions;
+    }, 'getCardActions');
+}
+
+/**
+ * Deleta uma checklist inteira de um card
+ * @param {string} checklistId - ID da checklist
+ * @returns {Promise<Object>}
+ */
+async function deleteChecklist(checklistId) {
+    return withTrelloRetry(async () => {
+        const url = `${BASE_URL}/checklists/${checklistId}?${getAuthParams()}`;
+
+        const response = await fetchTrello(url, { method: 'DELETE' });
+        if (!response.ok) throw new Error(await response.text());
+
+        log.trello('Checklist deletada', { checklistId });
+        return { success: true, checklistId };
+    }, 'deleteChecklist');
+}
+
 module.exports = {
     // Operações básicas
     createCard,
@@ -541,6 +649,12 @@ module.exports = {
     removeLabel,
     createList,
     addItemToChecklist,
+    // Endpoints adicionais
+    markDueComplete,
+    renameList,
+    archiveList,
+    getCardActions,
+    deleteChecklist,
     // Status
     getStatus: () => ({
         online: !!process.env.TRELLO_API_KEY,

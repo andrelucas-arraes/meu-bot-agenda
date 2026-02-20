@@ -287,10 +287,13 @@ bot.action('help_trello', (ctx) => {
 *Listar e Buscar:*
 • "Listar cards" / "Meu board"
 • "Procura cards sobre relatório" 🔍
+• "Cards atrasados" / "Cards vencidos" ⏰
+• "Estatísticas do trello" 📊
 
 *Ver Detalhes:*
 • "Detalhes do card X"
 • "Checklists do card X"
+• "Histórico do card X" 📋
 
 *Gerenciar Cards:*
 • "Mover Bug no login para Feito"
@@ -298,11 +301,19 @@ bot.action('help_trello', (ctx) => {
 • "Remover etiqueta do card X"
 • "Arquivar card X"
 • "Deletar card X" 🗑️
+• "Concluir prazo do card X" ✅
 
 *Checklists:*
 • "Marca item 1 como feito no card X" ✅
 • "Desmarca item Deploy no card X"
 • "Remove item 2 do card X"
+• "Deletar checklist do card X" 🗑️
+
+*Listas:*
+• "Listar listas do board"
+• "Criar lista Sprint 2"
+• "Renomear lista X para Y" ✏️
+• "Arquivar lista Concluídos" 📦
 
 *Dica:* Use Trello para tarefas maiores que precisam de rastreamento e subtarefas!
     `, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Voltar', 'help_back')]]) });
@@ -2525,6 +2536,271 @@ async function processIntent(ctx, intent) {
         scheduler.invalidateCache('trello');
 
         await ctx.reply(`✅ Etiqueta *${targetLabel.name || targetLabel.color}* removida do card "${card.name}"`, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'trello_due_complete') {
+        const card = await findTrelloCardByQuery(intent.query);
+        if (!card) return ctx.reply('⚠️ Card não encontrado.');
+
+        if (!card.due) {
+            return ctx.reply(`⚠️ O card "*${cleanTrelloName(card.name)}*" não tem data de entrega definida.`, { parse_mode: 'Markdown' });
+        }
+
+        const complete = intent.complete !== undefined ? intent.complete : true;
+        await trelloService.markDueComplete(card.id, complete);
+        scheduler.invalidateCache('trello');
+
+        const emoji = complete ? '✅' : '⬜';
+        const status = complete ? 'marcado como entregue' : 'desmarcado (pendente)';
+        await ctx.reply(`${emoji} Prazo do card "*${cleanTrelloName(card.name)}*" ${status}!`, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'trello_rename_list') {
+        if (!intent.list_query) return ctx.reply('⚠️ Qual lista você quer renomear?');
+        if (!intent.new_name) return ctx.reply('⚠️ Preciso do novo nome para a lista.');
+
+        const lists = await trelloService.getLists();
+        const targetList = findTrelloListFuzzy(lists, intent.list_query);
+
+        if (!targetList) {
+            const available = lists.map(l => l.name).join(', ');
+            return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.\n📋 Listas disponíveis: ${available}`);
+        }
+
+        const oldName = targetList.name;
+        await trelloService.renameList(targetList.id, intent.new_name);
+        scheduler.invalidateCache('trello');
+
+        await ctx.reply(`✅ Lista "*${oldName}*" renomeada para "*${intent.new_name}*"!`, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'trello_archive_list') {
+        if (!intent.list_query) return ctx.reply('⚠️ Qual lista você quer arquivar?');
+
+        const lists = await trelloService.getLists();
+        const targetList = findTrelloListFuzzy(lists, intent.list_query);
+
+        if (!targetList) {
+            const available = lists.map(l => l.name).join(', ');
+            return ctx.reply(`⚠️ Lista "${intent.list_query}" não encontrada.\n📋 Listas disponíveis: ${available}`);
+        }
+
+        await trelloService.archiveList(targetList.id, true);
+        scheduler.invalidateCache('trello');
+
+        await ctx.reply(`📦 Lista "*${targetList.name}*" arquivada com sucesso!`, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'trello_card_activity') {
+        const card = await findTrelloCardByQuery(intent.query);
+        if (!card) return ctx.reply('⚠️ Card não encontrado.');
+
+        const limit = intent.limit || 10;
+        const actions = await trelloService.getCardActions(card.id, limit);
+
+        if (actions.length === 0) {
+            return ctx.reply(`📋 O card "*${cleanTrelloName(card.name)}*" não tem atividades registradas.`, { parse_mode: 'Markdown' });
+        }
+
+        let msg = `📋 *Histórico de "${cleanTrelloName(card.name)}"*\n\n`;
+
+        actions.forEach((action, i) => {
+            const date = DateTime.fromISO(action.date).setZone('America/Sao_Paulo');
+            const dateStr = date.toFormat('dd/MM HH:mm');
+            const who = action.memberCreator?.fullName || action.memberCreator?.username || 'Sistema';
+
+            let description = '';
+            switch (action.type) {
+                case 'commentCard':
+                    description = `💬 Comentou: "${(action.data.text || '').substring(0, 100)}"`;
+                    break;
+                case 'updateCard':
+                    if (action.data.listAfter) {
+                        description = `📁 Moveu para "${action.data.listAfter.name}"`;
+                    } else if (action.data.card?.closed === true) {
+                        description = '📦 Arquivou o card';
+                    } else if (action.data.card?.closed === false) {
+                        description = '📂 Restaurou o card';
+                    } else if (action.data.card?.dueComplete === true) {
+                        description = '✅ Marcou prazo como concluído';
+                    } else if (action.data.card?.dueComplete === false) {
+                        description = '⬜ Desmarcou prazo';
+                    } else if (action.data.old?.name) {
+                        description = `✏️ Renomeou de "${action.data.old.name}"`;
+                    } else if (action.data.old?.desc !== undefined) {
+                        description = '📝 Atualizou descrição';
+                    } else if (action.data.old?.due !== undefined) {
+                        description = '📅 Alterou prazo';
+                    } else {
+                        description = '✏️ Atualizou o card';
+                    }
+                    break;
+                case 'addMemberToCard':
+                    description = `👤 Adicionou membro: ${action.data.member?.name || '?'}`;
+                    break;
+                case 'removeMemberFromCard':
+                    description = `👤 Removeu membro: ${action.data.member?.name || '?'}`;
+                    break;
+                case 'addAttachmentToCard':
+                    description = `📎 Anexou: "${action.data.attachment?.name || 'arquivo'}"`;
+                    break;
+                case 'addChecklistToCard':
+                    description = `☑️ Adicionou checklist: "${action.data.checklist?.name || '?'}"`;
+                    break;
+                case 'removeChecklistFromCard':
+                    description = `🗑️ Removeu checklist: "${action.data.checklist?.name || '?'}"`;
+                    break;
+                case 'updateCheckItemStateOnCard':
+                    const state = action.data.checkItem?.state === 'complete' ? '✅' : '⬜';
+                    description = `${state} Item: "${action.data.checkItem?.name || '?'}"`;
+                    break;
+                case 'createCard':
+                    description = '🆕 Card criado';
+                    break;
+                case 'addLabelToCard':
+                    description = `🏷️ Adicionou etiqueta: "${action.data.label?.name || action.data.label?.color || '?'}"`;
+                    break;
+                case 'removeLabelFromCard':
+                    description = `🏷️ Removeu etiqueta: "${action.data.label?.name || action.data.label?.color || '?'}"`;
+                    break;
+                default:
+                    description = `🔄 ${action.type.replace(/([A-Z])/g, ' $1').trim()}`;
+            }
+
+            msg += `${i + 1}. \`${dateStr}\` — *${who}*\n   ${description}\n\n`;
+        });
+
+        await ctx.reply(msg, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'trello_overdue') {
+        const allCards = await trelloService.listAllCards();
+        const now = DateTime.now().setZone('America/Sao_Paulo');
+
+        const overdueCards = allCards
+            .filter(c => c.due && !c.dueComplete && DateTime.fromISO(c.due) < now)
+            .sort((a, b) => DateTime.fromISO(a.due) - DateTime.fromISO(b.due));
+
+        if (overdueCards.length === 0) {
+            return ctx.reply('✅ Nenhum card com prazo vencido! Tudo em dia! 🎉');
+        }
+
+        let msg = `⏰ *Cards com Prazo Vencido (${overdueCards.length})*\n\n`;
+
+        overdueCards.forEach((c, i) => {
+            const dueDate = DateTime.fromISO(c.due).setZone('America/Sao_Paulo');
+            const daysLate = Math.floor(now.diff(dueDate, 'days').days);
+            const dateStr = dueDate.toFormat('dd/MM/yyyy');
+            const urgency = daysLate > 7 ? '🔴' : daysLate > 3 ? '🟡' : '🟠';
+
+            msg += `${urgency} ${i + 1}. *${cleanTrelloName(c.name)}*\n`;
+            msg += `   📅 Venceu: ${dateStr} (${daysLate} dia${daysLate !== 1 ? 's' : ''} atrás)\n`;
+            if (c.listName) msg += `   📁 Lista: ${c.listName}\n`;
+            msg += '\n';
+        });
+
+        msg += `\n_Dica: Diga "concluir prazo do card X" para marcar como entregue_`;
+
+        await ctx.reply(msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+
+    } else if (intent.tipo === 'trello_board_stats') {
+        const groups = await trelloService.listAllCardsGrouped();
+        const allCards = groups.flatMap(g => g.cards);
+        const now = DateTime.now().setZone('America/Sao_Paulo');
+
+        // Estatísticas
+        const totalCards = allCards.length;
+        const totalLists = groups.length;
+        const listsWithCards = groups.filter(g => g.cards.length > 0).length;
+
+        // Prazos
+        const withDue = allCards.filter(c => c.due);
+        const overdue = withDue.filter(c => !c.dueComplete && DateTime.fromISO(c.due) < now);
+        const dueToday = withDue.filter(c => !c.dueComplete && DateTime.fromISO(c.due).hasSame(now, 'day'));
+        const dueThisWeek = withDue.filter(c => {
+            if (c.dueComplete) return false;
+            const due = DateTime.fromISO(c.due);
+            return due > now && due <= now.plus({ days: 7 });
+        });
+        const completed = withDue.filter(c => c.dueComplete);
+
+        // Labels
+        const allLabels = allCards.flatMap(c => c.labels || []);
+        const labelCounts = {};
+        allLabels.forEach(l => {
+            const name = l.name || l.color || 'sem nome';
+            labelCounts[name] = (labelCounts[name] || 0) + 1;
+        });
+        const withoutLabel = allCards.filter(c => !c.labels || c.labels.length === 0);
+
+        let msg = `📊 *Estatísticas do Board*\n\n`;
+
+        // Resumo geral
+        msg += `📋 *Geral:*\n`;
+        msg += `   • ${totalCards} cards no total\n`;
+        msg += `   • ${totalLists} listas (${listsWithCards} com cards)\n\n`;
+
+        // Prazos
+        msg += `⏰ *Prazos:*\n`;
+        msg += `   • ${overdue.length} vencido${overdue.length !== 1 ? 's' : ''} ${overdue.length > 0 ? '🔴' : '✅'}\n`;
+        msg += `   • ${dueToday.length} para hoje ${dueToday.length > 0 ? '🟡' : ''}\n`;
+        msg += `   • ${dueThisWeek.length} esta semana\n`;
+        msg += `   • ${completed.length} entregue${completed.length !== 1 ? 's' : ''} ✅\n`;
+        msg += `   • ${totalCards - withDue.length} sem prazo definido\n\n`;
+
+        // Labels
+        if (Object.keys(labelCounts).length > 0) {
+            msg += `🏷️ *Etiquetas:*\n`;
+            const sortedLabels = Object.entries(labelCounts).sort((a, b) => b[1] - a[1]);
+            sortedLabels.slice(0, 8).forEach(([name, count]) => {
+                msg += `   • ${name}: ${count} card${count !== 1 ? 's' : ''}\n`;
+            });
+            msg += `   • _Sem etiqueta: ${withoutLabel.length} card${withoutLabel.length !== 1 ? 's' : ''}_\n\n`;
+        }
+
+        // Por lista
+        msg += `📁 *Por Lista:*\n`;
+        groups
+            .filter(g => g.cards.length > 0)
+            .sort((a, b) => b.cards.length - a.cards.length)
+            .forEach(g => {
+                const overdueInList = g.cards.filter(c => c.due && !c.dueComplete && DateTime.fromISO(c.due) < now).length;
+                const overdueTag = overdueInList > 0 ? ` (⚠️ ${overdueInList} vencido${overdueInList !== 1 ? 's' : ''})` : '';
+                msg += `   • ${g.name}: ${g.cards.length} card${g.cards.length !== 1 ? 's' : ''}${overdueTag}\n`;
+            });
+
+        await ctx.reply(msg, { parse_mode: 'Markdown' });
+
+    } else if (intent.tipo === 'trello_delete_checklist') {
+        const card = await findTrelloCardByQuery(intent.query);
+        if (!card) return ctx.reply('⚠️ Card não encontrado.');
+
+        const checklists = await trelloService.getCardChecklists(card.id);
+
+        if (checklists.length === 0) {
+            return ctx.reply(`⚠️ O card "*${cleanTrelloName(card.name)}*" não tem checklists.`, { parse_mode: 'Markdown' });
+        }
+
+        let targetChecklist = null;
+
+        if (intent.checklist_name) {
+            // Busca por nome
+            targetChecklist = checklists.find(c =>
+                c.name.toLowerCase().includes(intent.checklist_name.toLowerCase())
+            );
+            if (!targetChecklist) {
+                const available = checklists.map(c => c.name).join(', ');
+                return ctx.reply(`⚠️ Checklist "${intent.checklist_name}" não encontrada.\n📋 Checklists disponíveis: ${available}`);
+            }
+        } else if (checklists.length === 1) {
+            // Se tem uma só, deleta essa
+            targetChecklist = checklists[0];
+        } else {
+            // Se tem múltiplas, pergunta qual
+            const available = checklists.map((c, i) => `${i + 1}. ${c.name} (${c.checkItems.length} itens)`).join('\n');
+            return ctx.reply(`⚠️ O card tem ${checklists.length} checklists. Qual devo deletar?\n\n${available}\n\n_Diga "deletar checklist [nome] do card ${card.name}"_`, { parse_mode: 'Markdown' });
+        }
+
+        const itemCount = targetChecklist.checkItems ? targetChecklist.checkItems.length : 0;
+        await trelloService.deleteChecklist(targetChecklist.id);
+        scheduler.invalidateCache('trello');
+
+        await ctx.reply(`🗑️ Checklist "*${targetChecklist.name}*" (${itemCount} itens) removida do card "*${cleanTrelloName(card.name)}*"!`, { parse_mode: 'Markdown' });
 
         // ============================================
         // KNOWLEDGE BASE (MEMÓRIA DE LONGO PRAZO)
